@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block title %}새 회차 만들기{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">새 회차 만들기</h1>
+    <p class="page-subtitle">주식매수선택권 행사 회차 정보를 입력하세요</p>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="form-card">
+  <form method="POST" action="/round/new" id="round-form">
+
+    <div class="form-group">
+      <label class="form-label required">회차명</label>
+      <input type="text" name="name" class="form-control" placeholder="예: 2026년 2월 납입" required
+             value="{{ request.form.get('name', '') }}">
+      <div class="form-hint">회차를 구분할 수 있는 이름을 입력하세요</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">행사일</label>
+      <input type="date" name="exercise_date" class="form-control"
+             value="{{ request.form.get('exercise_date', '') }}">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label required">행사가액 (원)</label>
+      <div id="price-list">
+        <div class="price-row" data-index="0">
+          <input type="number" name="prices" class="form-control price-input"
+                 placeholder="예: 1250" min="0" step="1">
+          <button type="button" class="btn btn-danger btn-sm remove-price" onclick="removePriceRow(this)">
+            삭제
+          </button>
+        </div>
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addPriceRow()" style="margin-top:8px;">
+        &#43; 행사가액 추가
+      </button>
+      <div class="form-hint">행사가액이 여러 개인 경우 모두 입력하세요</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">비고</label>
+      <textarea name="notes" class="form-control" rows="3"
+                placeholder="추가 메모사항을 입력하세요">{{ request.form.get('notes', '') }}</textarea>
+    </div>
+
+    <div class="form-actions">
+      <a href="/" class="btn btn-secondary">취소</a>
+      <button type="submit" class="btn btn-primary">회차 만들기</button>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let priceIndex = 1;
+
+  function addPriceRow() {
+    const list = document.getElementById('price-list');
+    const row = document.createElement('div');
+    row.className = 'price-row';
+    row.dataset.index = priceIndex++;
+    row.innerHTML = `
+      <input type="number" name="prices" class="form-control price-input"
+             placeholder="예: 2000" min="0" step="1">
+      <button type="button" class="btn btn-danger btn-sm remove-price" onclick="removePriceRow(this)">
+        삭제
+      </button>
+    `;
+    list.appendChild(row);
+    row.querySelector('input').focus();
+  }
+
+  function removePriceRow(btn) {
+    const rows = document.querySelectorAll('.price-row');
+    if (rows.length <= 1) {
+      showToast('행사가액이 최소 1개 필요합니다.', 'warning');
+      return;
+    }
+    btn.closest('.price-row').remove();
+  }
+</script>
+{% endblock %}

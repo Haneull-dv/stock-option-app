@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}대시보드{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">대시보드</h1>
+    <p class="page-subtitle">주식매수선택권 행사 회차 목록</p>
+  </div>
+  <a href="/round/new" class="btn btn-primary btn-lg">
+    <span>&#43;</span> 새 회차 만들기
+  </a>
+</div>
+
+{% if rounds %}
+<div class="card-grid">
+  {% for r in rounds %}
+  <div class="round-card">
+    <div class="round-card-header">
+      <div>
+        <div class="round-card-name">{{ r.name }}</div>
+        {% if r.exercise_date %}
+        <div class="round-card-date">행사일: {{ r.exercise_date }}</div>
+        {% endif %}
+      </div>
+      <span class="badge {% if r.status == '완료' %}badge-success{% else %}badge-primary{% endif %}">
+        {{ r.status }}
+      </span>
+    </div>
+
+    <div class="round-card-body">
+      <div class="stat-row">
+        <div class="stat-item">
+          <div class="stat-value">{{ r.total }}</div>
+          <div class="stat-label">신청자</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">{{ r.submitted }}</div>
+          <div class="stat-label">서류 완료</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">{{ r.steps_done }}/6</div>
+          <div class="stat-label">단계 완료</div>
+        </div>
+      </div>
+
+      {% if r.total > 0 %}
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" style="width: {{ ((r.submitted / r.total) * 100)|int }}%"></div>
+      </div>
+      <div class="progress-label">서류 제출 {{ r.submitted }}/{{ r.total }}명</div>
+      {% endif %}
+    </div>
+
+    <div class="round-card-footer">
+      {% if r.notes %}
+      <div class="round-card-notes">{{ r.notes[:60] }}{% if r.notes|length > 60 %}...{% endif %}</div>
+      {% endif %}
+      <a href="/round/{{ r.id }}" class="btn btn-outline">회차 열기 &rarr;</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-state-icon">&#128195;</div>
+  <h2 class="empty-state-title">등록된 회차가 없습니다</h2>
+  <p class="empty-state-desc">새 회차를 만들어 주식매수선택권 행사 절차를 시작하세요.</p>
+  <a href="/round/new" class="btn btn-primary btn-lg">새 회차 만들기</a>
+</div>
+{% endif %}
+{% endblock %}

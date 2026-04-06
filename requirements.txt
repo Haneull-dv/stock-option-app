@@ -1,0 +1,6 @@
+flask
+pypdf
+python-docx
+openpyxl
+pillow
+pywin32

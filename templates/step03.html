@@ -1,0 +1,202 @@
+{% extends 'base.html' %}
+{% block title %}Step 03 - 행사대금 납입 | {{ round.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="/round/{{ round.id }}" class="breadcrumb">&larr; {{ round.name }}</a>
+    <h1 class="page-title">STEP 03 &mdash; 행사대금 납입</h1>
+    <p class="page-subtitle">행사내역 집계 및 은행 제출 서류 자동 생성</p>
+  </div>
+</div>
+
+<!-- 행사내역 집계 -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">행사내역 집계</h2>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>행사가액 (원)</th>
+          <th class="col-center">신청자 수</th>
+          <th class="col-center">수량 (주)</th>
+          <th class="col-center">납입금액 (원)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for price in prices %}
+        {% set info = price_summary[price] %}
+        <tr>
+          <td><strong>{{ '{:,}'.format(price) }}원</strong></td>
+          <td class="col-center">{{ info.count }}명</td>
+          <td class="col-center">{{ '{:,}'.format(info.qty) }}주</td>
+          <td class="col-center">{{ '{:,}'.format(info.amount) }}원</td>
+        </tr>
+        {% endfor %}
+        <tr style="background:#f0f4f8;font-weight:700;">
+          <td>합계</td>
+          <td class="col-center">-</td>
+          <td class="col-center">{{ '{:,}'.format(total_qty) }}주</td>
+          <td class="col-center">{{ '{:,}'.format(total_amount) }}원</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% if not prices %}
+  <p style="color:var(--text-muted);padding:16px;">신청자 데이터가 없습니다. Step 01에서 신청자를 먼저 등록하세요.</p>
+  {% endif %}
+</div>
+
+<!-- 서류 생성 -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">서류 생성</h2>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+    <div class="form-group">
+      <label class="form-label required">납입 마감일</label>
+      <input type="date" id="payment-date" class="form-control"
+             value="{{ round.exercise_date or '' }}"
+             style="max-width:200px;">
+      <span style="font-size:12px;color:var(--text-muted);">은행 서류 날짜로 사용됩니다</span>
+    </div>
+    <div class="form-group">
+      <label class="form-label">자본의 총액 (수납의뢰서용)</label>
+      <input type="text" id="total-capital" class="form-control"
+             placeholder="예: 5,384,693,000"
+             style="max-width:240px;">
+      <span style="font-size:12px;color:var(--text-muted);">비워두면 기존 템플릿 값 유지</span>
+    </div>
+  </div>
+
+  <div style="margin-bottom:16px;">
+    <label style="font-size:13px;font-weight:600;display:block;margin-bottom:8px;">생성할 서류 선택</label>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="chk-excel" checked> 행사내역 엑셀 (.xlsx)
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="chk-sunabu" checked> 수납의뢰서 (.hwpx)
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="chk-yeongsu" checked> 영수증 (.hwpx)
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="chk-bogwan" checked> 보관증명서 (행사가액별 각 1부, .hwpx)
+      </label>
+    </div>
+  </div>
+
+  <button class="btn btn-primary btn-lg" id="generate-btn" onclick="generateDocs()">
+    &#9889; 서류 자동 생성
+  </button>
+</div>
+
+<!-- 결과물 다운로드 -->
+<div class="section-card" id="result-section" style="display:none;">
+  <div class="section-card-header">
+    <h2 class="section-card-title">생성된 서류</h2>
+  </div>
+  <div id="result-list" class="download-list"></div>
+</div>
+
+{% if outputs %}
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">이전 생성 결과</h2>
+  </div>
+  <div class="download-list">
+    {% for out in outputs %}
+    <div class="download-item">
+      <div class="download-item-name">{{ out.output_filename }}</div>
+      <a href="/round/{{ round.id }}/step03/download/{{ out.output_filename }}"
+         class="btn btn-success btn-sm" download>&#11123; 다운로드</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+const ROUND_ID = {{ round.id }};
+
+async function generateDocs() {
+  const paymentDate = document.getElementById('payment-date').value;
+  if (!paymentDate) {
+    showToast('납입 마감일을 입력하세요', 'error');
+    return;
+  }
+
+  const docTypes = [];
+  if (document.getElementById('chk-excel').checked)   docTypes.push('excel');
+  if (document.getElementById('chk-sunabu').checked)  docTypes.push('sunabuiuiseo');
+  if (document.getElementById('chk-yeongsu').checked) docTypes.push('yeongsujeung');
+  if (document.getElementById('chk-bogwan').checked)  docTypes.push('bogwan');
+
+  if (!docTypes.length) {
+    showToast('생성할 서류를 하나 이상 선택하세요', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('generate-btn');
+  btn.disabled = true;
+  btn.textContent = '생성 중...';
+
+  try {
+    const res = await apiCall(`/round/${ROUND_ID}/step03/generate`, 'POST', {
+      payment_date: paymentDate,
+      total_capital: document.getElementById('total-capital').value.replace(/,/g, ''),
+      doc_types: docTypes,
+    });
+
+    if (!res.success) {
+      showToast(res.message || '생성 실패', 'error');
+      return;
+    }
+
+    const section = document.getElementById('result-section');
+    const list    = document.getElementById('result-list');
+    section.style.display = '';
+    list.innerHTML = '';
+
+    res.data.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'download-item';
+      if (item.success) {
+        div.innerHTML = `
+          <div>
+            <div class="download-item-name">${escHtml(item.name)}</div>
+          </div>
+          <a href="/round/${ROUND_ID}/step03/download/${encodeURIComponent(item.filename)}"
+             class="btn btn-success btn-sm" download>&#11123; 다운로드</a>
+        `;
+      } else {
+        div.style.borderColor = '#fecaca';
+        div.style.background  = '#fef2f2';
+        div.innerHTML = `<div class="download-item-name" style="color:#991b1b;">
+          ${escHtml(item.name)} 오류: ${escHtml(item.message || '')}
+        </div>`;
+      }
+      list.appendChild(div);
+    });
+
+    const ok = res.data.filter(d => d.success).length;
+    showToast(`${ok}개 서류 생성 완료`, 'success');
+    section.scrollIntoView({ behavior: 'smooth' });
+
+  } catch(e) {
+    showToast('오류: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '&#9889; 서류 자동 생성';
+  }
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

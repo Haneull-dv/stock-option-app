@@ -1,0 +1,355 @@
+{% extends 'base.html' %}
+{% block title %}Step 01 - 신청서 접수 | {{ round.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="/round/{{ round.id }}" class="breadcrumb">&larr; {{ round.name }}</a>
+    <h1 class="page-title">STEP 01 &mdash; 신청서 접수</h1>
+    <p class="page-subtitle">신청자 명단 관리, 서류 수집, PDF 합본</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Section 1: 신청자 명단
+══════════════════════════════════════════════════════════ -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">1. 신청자 명단</h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-danger btn-sm" id="bulk-delete-btn" style="display:none;" onclick="deleteSelected()">
+        선택 삭제 (<span id="selected-count">0</span>명)
+      </button>
+      <label class="btn btn-secondary" style="cursor:pointer;margin:0;">
+        &#128196; 엑셀로 불러오기
+        <input type="file" id="excel-upload-input" accept=".xlsx,.xls" style="display:none" onchange="importFromExcel(event)">
+      </label>
+      <button class="btn btn-primary" onclick="openAddApplicantModal()">&#43; 신청자 추가</button>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table" id="applicant-table">
+      <thead>
+        <tr>
+          <th class="col-center" style="width:36px;">
+            <input type="checkbox" id="check-all" title="전체 선택" onchange="toggleAllChecks(this)">
+          </th>
+          <th class="col-drag"></th>
+          <th class="col-order">순서</th>
+          <th>이름</th>
+          <th>행사가액 (원)</th>
+          <th>수량</th>
+          <th>증권사</th>
+          <th>계좌번호</th>
+          <th class="col-center">신청서</th>
+          <th class="col-center">신분증</th>
+          <th class="col-center">계좌사본</th>
+          <th>개인 제출 링크</th>
+        </tr>
+      </thead>
+      <tbody id="applicant-tbody">
+        {% for ap in applicants %}
+        <tr class="applicant-row" data-id="{{ ap.id }}" draggable="true">
+          <td class="col-center">
+            <input type="checkbox" class="row-check" onchange="onRowCheckChange()">
+          </td>
+          <td class="drag-handle" title="드래그하여 순서 변경">&#9776;</td>
+          <td class="col-order sort-order-cell">{{ ap.sort_order }}</td>
+          <td class="applicant-name">{{ ap.name }}</td>
+          <td>{{ '{:,}'.format(ap.exercise_price) if ap.exercise_price else '-' }}</td>
+          <td>{{ '{:,}'.format(ap.quantity) if ap.quantity else '-' }}</td>
+          <td>{{ ap.broker or '-' }}</td>
+          <td>{{ ap.account_number or '-' }}</td>
+          <td class="col-center doc-status" data-id="{{ ap.id }}" data-type="application">
+            {% if ap.has_application %}<span class="doc-check">&#10003;</span>{% else %}<span class="doc-x">&#10007;</span>{% endif %}
+          </td>
+          <td class="col-center doc-status" data-id="{{ ap.id }}" data-type="id_copy">
+            {% if ap.has_id_copy %}<span class="doc-check">&#10003;</span>{% else %}<span class="doc-x">&#10007;</span>{% endif %}
+          </td>
+          <td class="col-center doc-status" data-id="{{ ap.id }}" data-type="account_copy">
+            {% if ap.has_account_copy %}<span class="doc-check">&#10003;</span>{% else %}<span class="doc-x">&#10007;</span>{% endif %}
+          </td>
+          <td>
+            <div class="link-cell">
+              <input type="text" class="link-input" readonly
+                     value="{{ base_url }}/submit/{{ ap.submit_token }}"
+                     id="link-{{ ap.id }}">
+              <button class="btn btn-outline btn-xs" onclick="copyLink('link-{{ ap.id }}')">복사</button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="empty-row">
+          <td colspan="12" class="empty-table-cell">
+            신청자를 추가하세요
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Section 2: 서류 업로드
+══════════════════════════════════════════════════════════ -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">2. 서류 업로드</h2>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('tab-bulk', this)">담당자 일괄업로드</button>
+    <button class="tab-btn" onclick="switchTab('tab-status', this)">직원 개별제출 현황</button>
+  </div>
+
+  <!-- Tab 1: 담당자 일괄업로드 -->
+  <div id="tab-bulk" class="tab-content active">
+    <div class="upload-zones-grid">
+      <!-- 신청서 -->
+      <div class="upload-zone-wrapper">
+        <div class="upload-zone-label">신청서 <span class="badge badge-primary">2부</span></div>
+        <div class="upload-zone" id="zone-application"
+             ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
+             ondrop="handleDrop(event, 'application')"
+             onclick="document.getElementById('file-application').click()">
+          <div class="upload-zone-icon">&#128196;</div>
+          <div class="upload-zone-text">파일을 드래그하거나 클릭하여 업로드</div>
+          <div class="upload-zone-hint">PDF, JPG, PNG, HWP 등</div>
+        </div>
+        <input type="file" id="file-application" multiple accept=".pdf,.jpg,.jpeg,.png,.hwp,.hwpx,.doc,.docx"
+               onchange="handleFileSelect(event, 'application')" style="display:none">
+        <div id="files-application" class="file-list"></div>
+      </div>
+
+      <!-- 신분증사본 -->
+      <div class="upload-zone-wrapper">
+        <div class="upload-zone-label">신분증사본</div>
+        <div class="upload-zone" id="zone-id_copy"
+             ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
+             ondrop="handleDrop(event, 'id_copy')"
+             onclick="document.getElementById('file-id_copy').click()">
+          <div class="upload-zone-icon">&#128100;</div>
+          <div class="upload-zone-text">파일을 드래그하거나 클릭하여 업로드</div>
+          <div class="upload-zone-hint">PDF, JPG, PNG 등</div>
+        </div>
+        <input type="file" id="file-id_copy" multiple accept=".pdf,.jpg,.jpeg,.png"
+               onchange="handleFileSelect(event, 'id_copy')" style="display:none">
+        <div id="files-id_copy" class="file-list"></div>
+      </div>
+
+      <!-- 계좌사본 -->
+      <div class="upload-zone-wrapper">
+        <div class="upload-zone-label">계좌사본</div>
+        <div class="upload-zone" id="zone-account_copy"
+             ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
+             ondrop="handleDrop(event, 'account_copy')"
+             onclick="document.getElementById('file-account_copy').click()">
+          <div class="upload-zone-icon">&#127974;</div>
+          <div class="upload-zone-text">파일을 드래그하거나 클릭하여 업로드</div>
+          <div class="upload-zone-hint">PDF, JPG, PNG 등</div>
+        </div>
+        <input type="file" id="file-account_copy" multiple accept=".pdf,.jpg,.jpeg,.png"
+               onchange="handleFileSelect(event, 'account_copy')" style="display:none">
+        <div id="files-account_copy" class="file-list"></div>
+      </div>
+    </div>
+
+    <div class="upload-actions">
+      <button class="btn btn-secondary" onclick="autoMatchFiles()">
+        &#128269; 파일명으로 자동매칭
+      </button>
+      <div id="match-results" class="match-results"></div>
+    </div>
+  </div>
+
+  <!-- Tab 2: 직원 개별제출 현황 -->
+  <div id="tab-status" class="tab-content">
+    <div class="status-header">
+      <button class="btn btn-outline btn-sm" onclick="copyAllLinks()">링크 일괄복사</button>
+      <button class="btn btn-outline btn-sm" onclick="refreshStatus()">&#8635; 새로고침</button>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table" id="status-table">
+        <thead>
+          <tr>
+            <th>순서</th>
+            <th>이름</th>
+            <th class="col-center">신청서</th>
+            <th class="col-center">신분증사본</th>
+            <th class="col-center">계좌사본</th>
+            <th class="col-center">전체</th>
+            <th>제출 링크</th>
+          </tr>
+        </thead>
+        <tbody id="status-tbody">
+          {% for ap in applicants %}
+          <tr>
+            <td>{{ ap.sort_order }}</td>
+            <td>{{ ap.name }}</td>
+            <td class="col-center status-application-{{ ap.id }}">
+              {% if ap.has_application %}<span class="doc-check">&#10003;</span>{% else %}<span class="doc-x">&#10007;</span>{% endif %}
+            </td>
+            <td class="col-center status-id_copy-{{ ap.id }}">
+              {% if ap.has_id_copy %}<span class="doc-check">&#10003;</span>{% else %}<span class="doc-x">&#10007;</span>{% endif %}
+            </td>
+            <td class="col-center status-account_copy-{{ ap.id }}">
+              {% if ap.has_account_copy %}<span class="doc-check">&#10003;</span>{% else %}<span class="doc-x">&#10007;</span>{% endif %}
+            </td>
+            <td class="col-center">
+              {% if ap.has_application and ap.has_id_copy and ap.has_account_copy %}
+              <span class="badge badge-success">완료</span>
+              {% else %}
+              <span class="badge badge-neutral">미완료</span>
+              {% endif %}
+            </td>
+            <td>
+              <input type="text" class="link-input link-small" readonly
+                     value="{{ base_url }}/submit/{{ ap.submit_token }}"
+                     id="slink-{{ ap.id }}">
+              <button class="btn btn-outline btn-xs" onclick="copyLink('slink-{{ ap.id }}')">복사</button>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="empty-table-cell">신청자가 없습니다</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Section 3: PDF 병합 및 결과물
+══════════════════════════════════════════════════════════ -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">3. PDF 병합 및 결과물</h2>
+  </div>
+
+  <div class="merge-status-grid">
+    <div class="merge-status-item">
+      <div class="merge-status-label">신청서</div>
+      <div class="merge-status-count">
+        <span class="merge-count-submitted" id="cnt-application">{{ type_counts.application }}</span>
+        / <span>{{ stats.total }}</span>명 제출
+      </div>
+    </div>
+    <div class="merge-status-item">
+      <div class="merge-status-label">신분증사본</div>
+      <div class="merge-status-count">
+        <span class="merge-count-submitted" id="cnt-id_copy">{{ type_counts.id_copy }}</span>
+        / <span>{{ stats.total }}</span>명 제출
+      </div>
+    </div>
+    <div class="merge-status-item">
+      <div class="merge-status-label">계좌사본</div>
+      <div class="merge-status-count">
+        <span class="merge-count-submitted" id="cnt-account_copy">{{ type_counts.account_copy }}</span>
+        / <span>{{ stats.total }}</span>명 제출
+      </div>
+    </div>
+  </div>
+
+  <div class="merge-actions">
+    <button class="btn btn-primary btn-lg" id="merge-btn" onclick="runMerge({{ round.id }})">
+      &#128196; PDF 병합 실행
+    </button>
+    <span class="merge-hint">신청자가 없거나 서류가 0건이면 빈 PDF가 생성됩니다</span>
+  </div>
+
+  <div id="merge-results" class="merge-results">
+    {% if outputs %}
+    <h3 class="merge-results-title">이전 결과물</h3>
+    <div class="download-list">
+      {% for out in outputs %}
+      <div class="download-item">
+        <div class="download-item-name">{{ out.output_filename }}</div>
+        <a href="/round/{{ round.id }}/download/{{ out.output_filename }}" class="btn btn-success btn-sm">
+          &#11123; 다운로드
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Add Applicant Modal Content
+══════════════════════════════════════════════════════════ -->
+<div id="add-applicant-form" style="display:none;">
+  <form id="applicant-form" onsubmit="submitAddApplicant(event)">
+    <input type="hidden" name="round_id" value="{{ round.id }}">
+
+    <div class="form-group">
+      <label class="form-label required">이름</label>
+      <input type="text" name="name" class="form-control" required placeholder="홍길동">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">행사가액 (원)</label>
+      <select name="exercise_price" class="form-control">
+        <option value="">선택</option>
+        {% for p in prices %}
+        <option value="{{ p }}">{{ '{:,}'.format(p) }}원</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">수량 (주)</label>
+      <input type="number" name="quantity" class="form-control" placeholder="0" min="0">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">증권사</label>
+      <input type="text" name="broker" class="form-control" placeholder="예: 미래에셋">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">계좌번호</label>
+      <input type="text" name="account_number" class="form-control" placeholder="예: 123-456789-01">
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">취소</button>
+      <button type="submit" class="btn btn-primary">추가</button>
+    </div>
+  </form>
+</div>
+
+<!-- 엑셀 Import 미리보기 모달 내용 -->
+<div id="excel-import-form" style="display:none;">
+  <p class="import-preview-count" id="import-count-msg"></p>
+  <div style="overflow-x:auto;max-height:340px;overflow-y:auto;">
+    <table class="import-preview-table" id="import-preview-table">
+      <thead>
+        <tr>
+          <th>#</th><th>이름</th><th>부여일</th><th>행사가(원)</th><th>신청수량</th><th>행사일</th><th>증권사</th><th>계좌번호</th>
+        </tr>
+      </thead>
+      <tbody id="import-preview-tbody"></tbody>
+    </table>
+  </div>
+  <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
+    <label style="font-size:13px;font-weight:600;">기존 명단:</label>
+    <label style="font-size:13px;cursor:pointer;"><input type="radio" name="import-mode" value="append" checked> 유지하고 추가</label>
+    <label style="font-size:13px;cursor:pointer;"><input type="radio" name="import-mode" value="replace"> 전체 교체</label>
+  </div>
+  <div class="form-actions" style="margin-top:16px;">
+    <button type="button" class="btn btn-secondary" onclick="closeModal()">취소</button>
+    <button type="button" class="btn btn-primary" onclick="confirmImport()">&#10003; 이대로 추가</button>
+  </div>
+</div>
+
+<script>
+  const ROUND_ID = {{ round.id }};
+  const APPLICANT_NAMES = [{% for ap in applicants %}"{{ ap.name }}"{% if not loop.last %},{% endif %}{% endfor %}];
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/step01.js"></script>
+{% endblock %}

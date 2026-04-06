@@ -1,0 +1,422 @@
+{% extends 'base.html' %}
+{% block title %}Step 03-3 - 의무보유 | {{ round.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="/round/{{ round.id }}" class="breadcrumb">&larr; {{ round.name }}</a>
+    <h1 class="page-title">STEP 03-3 &mdash; 의무보유</h1>
+    <p class="page-subtitle">의무보유 확약서 및 계속보유신청 공문 자동 생성</p>
+  </div>
+</div>
+
+<!-- 기간 및 날짜 설정 -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">기간 및 날짜 설정</h2>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div class="form-group">
+      <label class="form-label required">의무보유 시작일</label>
+      <input type="date" id="holding-start" class="form-control"
+             value="{{ config.holding_start | replace('.', '-') if config.holding_start else '' }}"
+             style="max-width:200px;">
+    </div>
+    <div class="form-group">
+      <label class="form-label required">의무보유 종료일</label>
+      <input type="date" id="holding-end" class="form-control"
+             value="{{ config.holding_end | replace('.', '-') if config.holding_end else '' }}"
+             style="max-width:200px;">
+    </div>
+    <div class="form-group">
+      <label class="form-label">공문 날짜</label>
+      <input type="date" id="doc-date" class="form-control"
+             value="{{ config.doc_date | replace('. ', '-') | replace('.', '') if config.doc_date else '' }}"
+             style="max-width:200px;">
+      <span style="font-size:12px;color:var(--text-muted);">공문 상단 일자</span>
+    </div>
+    <div class="form-group">
+      <label class="form-label">예약처리일</label>
+      <input type="date" id="processing-date" class="form-control"
+             value="{{ config.processing_date | replace('. ', '-') | replace('.', '') if config.processing_date else '' }}"
+             style="max-width:200px;">
+      <span style="font-size:12px;color:var(--text-muted);">공문 5항 예약처리일</span>
+    </div>
+  </div>
+  <div style="margin-top:12px;">
+    <button class="btn btn-outline btn-sm" onclick="saveConfig()">저장</button>
+  </div>
+</div>
+
+<!-- 의무보유 대상자 -->
+<div class="section-card">
+  <div class="section-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <h2 class="section-card-title">의무보유 대상자</h2>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-danger btn-sm" id="btn-delete-selected"
+              onclick="deleteSelected()" disabled>선택 삭제</button>
+      <button class="btn btn-outline btn-sm" onclick="loadAllApplicants()">&#8635; 신청자 전체 불러오기</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddModal()">&#43; 직접 추가</button>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table" id="subjects-table">
+      <thead>
+        <tr>
+          <th style="width:36px;text-align:center;">
+            <input type="checkbox" id="chk-all" onchange="toggleAll(this)">
+          </th>
+          <th>이름</th>
+          <th>관계</th>
+          <th class="col-center">수량 (주)</th>
+          <th class="col-center">처리지점</th>
+          <th>계좌번호</th>
+          <th>비고</th>
+          <th style="width:60px;"></th>
+        </tr>
+      </thead>
+      <tbody id="subjects-tbody">
+        {% for s in subjects %}
+        <tr data-id="{{ s.id }}">
+          <td style="text-align:center;">
+            <input type="checkbox" class="row-chk" value="{{ s.id }}" onchange="onCheckChange()">
+          </td>
+          <td>{{ s.name }}</td>
+          <td>{{ s.relationship }}</td>
+          <td class="col-center">{{ '{:,}'.format(s.quantity or 0) }}</td>
+          <td class="col-center">{{ s.branch }}</td>
+          <td>{{ s.account_number or '-' }}</td>
+          <td>{{ s.note or '' }}</td>
+          <td style="text-align:center;">
+            <button class="btn btn-outline btn-xs" onclick="openEditModal({{ s.id }})">편집</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="empty-row">
+          <td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">
+            대상자가 없습니다. 신청자 전체 불러오기 또는 직접 추가하세요.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:8px;font-size:13px;color:var(--text-muted);">
+    총 <strong id="subject-count">{{ subjects|length }}</strong>명
+    &nbsp;|&nbsp; 도곡: <strong id="dogok-count">{{ subjects|selectattr('branch','eq','도곡')|list|length }}</strong>명
+    &nbsp;|&nbsp; 여의도: <strong id="yeouido-count">{{ subjects|selectattr('branch','eq','여의도')|list|length }}</strong>명
+  </div>
+</div>
+
+<!-- 서류 생성 -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">서류 생성</h2>
+  </div>
+  <div style="margin-bottom:16px;">
+    <label style="font-size:13px;font-weight:600;display:block;margin-bottom:8px;">생성할 서류 선택</label>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="chk-hwakjakseo" checked> 의무보유확약서 (.docx)
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="chk-gongmun" checked> 계속보유신청 공문 (.docx)
+      </label>
+    </div>
+  </div>
+  <button class="btn btn-primary btn-lg" id="generate-btn" onclick="generateDocs()">
+    &#9889; 서류 자동 생성
+  </button>
+</div>
+
+<!-- 결과 다운로드 -->
+<div class="section-card" id="result-section" style="display:none;">
+  <div class="section-card-header">
+    <h2 class="section-card-title">생성된 서류</h2>
+  </div>
+  <div id="result-list" class="download-list"></div>
+</div>
+
+{% if outputs %}
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">이전 생성 결과</h2>
+  </div>
+  <div class="download-list">
+    {% for out in outputs %}
+    <div class="download-item">
+      <div class="download-item-name">{{ out.output_filename }}</div>
+      <a href="/round/{{ round.id }}/step033/download/{{ out.output_filename }}"
+         class="btn btn-success btn-sm" download>&#11123; 다운로드</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 추가/편집 모달 -->
+<div id="subject-form-content" style="display:none;">
+  <form id="subject-form" onsubmit="submitSubject(event)">
+    <input type="hidden" id="subject-id" value="">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label required">이름</label>
+        <input type="text" id="sf-name" class="form-control" required placeholder="홍길동">
+      </div>
+      <div class="form-group">
+        <label class="form-label">관계</label>
+        <select id="sf-relationship" class="form-control">
+          <option value="미등기임원">미등기임원</option>
+          <option value="등기임원">등기임원</option>
+          <option value="직원">직원</option>
+          <option value="기타">기타</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label required">수량 (주)</label>
+        <input type="number" id="sf-quantity" class="form-control" required min="0" placeholder="10000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">처리지점</label>
+        <select id="sf-branch" class="form-control">
+          <option value="도곡">도곡WM센터</option>
+          <option value="여의도">여의도금융1센터</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">계좌번호</label>
+        <input type="text" id="sf-account" class="form-control" placeholder="000-00-000000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">비고</label>
+        <input type="text" id="sf-note" class="form-control" placeholder="">
+      </div>
+    </div>
+    <div class="form-actions" style="margin-top:8px;">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">취소</button>
+      <button type="submit" class="btn btn-primary">저장</button>
+    </div>
+  </form>
+</div>
+
+<script>
+const ROUND_ID = {{ round.id }};
+
+// ── 설정 저장 ──────────────────────────────────────────────────────────────────
+async function saveConfig() {
+  const fmt      = v => v ? v.replace(/-/g, '.') : '';
+  const fmtSpace = v => { if (!v) return ''; const [y,m,d] = v.split('-'); return `${y}. ${m}. ${d}`; };
+  const start = document.getElementById('holding-start').value;
+  const end   = document.getElementById('holding-end').value;
+  const docD  = document.getElementById('doc-date').value;
+  const procD = document.getElementById('processing-date').value;
+  try {
+    const res = await apiCall(`/round/${ROUND_ID}/step033/config`, 'POST', {
+      holding_start:   fmt(start),
+      holding_end:     fmt(end),
+      doc_date:        fmtSpace(docD),
+      processing_date: fmtSpace(procD),
+    });
+    if (res.success) showToast('설정 저장됨', 'success');
+    else showToast(res.message || '저장 실패', 'error');
+  } catch(e) { showToast('오류: ' + e.message, 'error'); }
+}
+
+// ── 전체 불러오기 ──────────────────────────────────────────────────────────────
+async function loadAllApplicants() {
+  const existing = document.querySelectorAll('#subjects-tbody tr[data-id]').length;
+  let mode = 'replace';
+  if (existing > 0) {
+    const choice = confirm(
+      '신청자 전체를 불러옵니다.\n\n확인: 기존 목록 교체\n취소: 기존 목록에 추가'
+    );
+    mode = choice ? 'replace' : 'append';
+  }
+  try {
+    const listRes = await apiCall(`/round/${ROUND_ID}/step033/applicants-list`, 'GET');
+    if (!listRes.success || !listRes.data.length) {
+      showToast('신청자가 없습니다. Step 01에서 먼저 등록하세요.', 'warning');
+      return;
+    }
+    const res = await apiCall(`/round/${ROUND_ID}/step033/load-applicants`, 'POST', {
+      selected: listRes.data,
+      mode,
+    });
+    if (res.success) {
+      renderSubjects(res.data);
+      showToast(`${res.count}명 불러오기 완료`, 'success');
+    } else {
+      showToast(res.message || '실패', 'error');
+    }
+  } catch(e) { showToast('오류: ' + e.message, 'error'); }
+}
+
+// ── 체크박스 ───────────────────────────────────────────────────────────────────
+function toggleAll(master) {
+  document.querySelectorAll('.row-chk').forEach(c => c.checked = master.checked);
+  onCheckChange();
+}
+
+function onCheckChange() {
+  const checked = document.querySelectorAll('.row-chk:checked').length;
+  const total   = document.querySelectorAll('.row-chk').length;
+  document.getElementById('chk-all').checked      = (checked === total && total > 0);
+  document.getElementById('chk-all').indeterminate = (checked > 0 && checked < total);
+  document.getElementById('btn-delete-selected').disabled = (checked === 0);
+}
+
+// ── 선택 삭제 ──────────────────────────────────────────────────────────────────
+async function deleteSelected() {
+  const ids = [...document.querySelectorAll('.row-chk:checked')].map(c => parseInt(c.value));
+  if (!ids.length) return;
+  if (!confirm(`선택한 ${ids.length}명을 삭제하시겠습니까?`)) return;
+
+  try {
+    // 순차 삭제
+    for (const id of ids) {
+      await apiCall(`/round/${ROUND_ID}/step033/subjects/${id}`, 'DELETE', null);
+    }
+    // 마지막 결과로 목록 갱신
+    const res = await apiCall(`/round/${ROUND_ID}/step033/subjects`, 'GET');
+    if (res.success) {
+      renderSubjects(res.data);
+      showToast(`${ids.length}명 삭제됨`, 'success');
+    }
+  } catch(e) { showToast('오류: ' + e.message, 'error'); }
+}
+
+// ── 테이블 렌더 ───────────────────────────────────────────────────────────────
+function renderSubjects(subjects) {
+  const tbody = document.getElementById('subjects-tbody');
+  document.getElementById('chk-all').checked = false;
+  document.getElementById('chk-all').indeterminate = false;
+  document.getElementById('btn-delete-selected').disabled = true;
+
+  if (!subjects.length) {
+    tbody.innerHTML = `<tr id="empty-row"><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">대상자가 없습니다.</td></tr>`;
+    updateCounts([]);
+    return;
+  }
+  tbody.innerHTML = subjects.map(s => `
+    <tr data-id="${s.id}">
+      <td style="text-align:center;">
+        <input type="checkbox" class="row-chk" value="${s.id}" onchange="onCheckChange()">
+      </td>
+      <td>${escHtml(s.name)}</td>
+      <td>${escHtml(s.relationship)}</td>
+      <td class="col-center">${Number(s.quantity||0).toLocaleString('ko-KR')}</td>
+      <td class="col-center">${escHtml(s.branch)}</td>
+      <td>${escHtml(s.account_number||'-')}</td>
+      <td>${escHtml(s.note||'')}</td>
+      <td style="text-align:center;">
+        <button class="btn btn-outline btn-xs" onclick="openEditModal(${s.id})">편집</button>
+      </td>
+    </tr>
+  `).join('');
+  updateCounts(subjects);
+}
+
+function updateCounts(subjects) {
+  document.getElementById('subject-count').textContent = subjects.length;
+  document.getElementById('dogok-count').textContent   = subjects.filter(s=>s.branch==='도곡').length;
+  document.getElementById('yeouido-count').textContent = subjects.filter(s=>s.branch==='여의도').length;
+}
+
+// ── 추가 모달 ──────────────────────────────────────────────────────────────────
+function openAddModal() {
+  document.getElementById('subject-id').value        = '';
+  document.getElementById('sf-name').value           = '';
+  document.getElementById('sf-relationship').value   = '미등기임원';
+  document.getElementById('sf-quantity').value       = '';
+  document.getElementById('sf-branch').value         = '도곡';
+  document.getElementById('sf-account').value        = '';
+  document.getElementById('sf-note').value           = '';
+  openModal('대상자 추가', 'subject-form-content');
+}
+
+// ── 편집 모달 ──────────────────────────────────────────────────────────────────
+function openEditModal(id) {
+  const row = document.querySelector(`tr[data-id="${id}"]`);
+  if (!row) return;
+  const cells = row.querySelectorAll('td');
+  // cells: [0]=chk [1]=이름 [2]=관계 [3]=수량 [4]=지점 [5]=계좌 [6]=비고 [7]=편집버튼
+  document.getElementById('subject-id').value      = id;
+  document.getElementById('sf-name').value         = cells[1].textContent.trim();
+  document.getElementById('sf-relationship').value = cells[2].textContent.trim();
+  document.getElementById('sf-quantity').value     = cells[3].textContent.trim().replace(/,/g,'');
+  document.getElementById('sf-branch').value       = cells[4].textContent.trim();
+  document.getElementById('sf-account').value      = cells[5].textContent.trim() === '-' ? '' : cells[5].textContent.trim();
+  document.getElementById('sf-note').value         = cells[6].textContent.trim();
+  openModal('대상자 편집', 'subject-form-content');
+}
+
+// ── 저장 ───────────────────────────────────────────────────────────────────────
+async function submitSubject(event) {
+  event.preventDefault();
+  const id = document.getElementById('subject-id').value;
+  const payload = {
+    name:           document.getElementById('sf-name').value.trim(),
+    relationship:   document.getElementById('sf-relationship').value,
+    quantity:       parseInt(document.getElementById('sf-quantity').value) || 0,
+    branch:         document.getElementById('sf-branch').value,
+    account_number: document.getElementById('sf-account').value.trim(),
+    note:           document.getElementById('sf-note').value.trim(),
+  };
+  try {
+    const url = id
+      ? `/round/${ROUND_ID}/step033/subjects/${id}`
+      : `/round/${ROUND_ID}/step033/subjects/add`;
+    const res = await apiCall(url, id ? 'PUT' : 'POST', payload);
+    if (res.success) {
+      renderSubjects(res.data);
+      closeModal();
+      showToast(id ? '수정되었습니다' : '추가되었습니다', 'success');
+    } else {
+      showToast(res.message || '저장 실패', 'error');
+    }
+  } catch(e) { showToast('오류: ' + e.message, 'error'); }
+}
+
+// ── 서류 생성 ──────────────────────────────────────────────────────────────────
+async function generateDocs() {
+  const docTypes = [];
+  if (document.getElementById('chk-hwakjakseo').checked) docTypes.push('hwakjakseo');
+  if (document.getElementById('chk-gongmun').checked)    docTypes.push('gongmun');
+  if (!docTypes.length) { showToast('생성할 서류를 선택하세요', 'warning'); return; }
+
+  const btn = document.getElementById('generate-btn');
+  btn.disabled = true; btn.textContent = '생성 중...';
+  try {
+    const res = await apiCall(`/round/${ROUND_ID}/step033/generate`, 'POST', { doc_types: docTypes });
+    if (!res.success) { showToast(res.message || '생성 실패', 'error'); return; }
+
+    const section = document.getElementById('result-section');
+    const list    = document.getElementById('result-list');
+    section.style.display = ''; list.innerHTML = '';
+    res.data.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'download-item';
+      if (item.success) {
+        div.innerHTML = `
+          <div class="download-item-name">${escHtml(item.name)}</div>
+          <a href="/round/${ROUND_ID}/step033/download/${encodeURIComponent(item.filename)}"
+             class="btn btn-success btn-sm" download>&#11123; 다운로드</a>`;
+      } else {
+        div.style.cssText = 'border-color:#fecaca;background:#fef2f2;';
+        div.innerHTML = `<div class="download-item-name" style="color:#991b1b;">
+          ${escHtml(item.name)} 오류: ${escHtml(item.message||'')}</div>`;
+      }
+      list.appendChild(div);
+    });
+    showToast(`${res.data.filter(d=>d.success).length}개 서류 생성 완료`, 'success');
+    section.scrollIntoView({ behavior:'smooth' });
+  } catch(e) { showToast('오류: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = '&#9889; 서류 자동 생성'; }
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

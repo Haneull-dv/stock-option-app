@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}페이지를 찾을 수 없습니다{% endblock %}
+{% block content %}
+<div class="empty-state">
+  <div class="empty-state-icon">&#128269;</div>
+  <h2 class="empty-state-title">페이지를 찾을 수 없습니다</h2>
+  <p class="empty-state-desc">요청하신 페이지가 존재하지 않습니다.</p>
+  <a href="/" class="btn btn-primary">대시보드로 돌아가기</a>
+</div>
+{% endblock %}

@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>주식매수선택권 서류 제출</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    body { background: #f0f4f8; }
+    .submit-container {
+      max-width: 620px;
+      margin: 48px auto;
+      padding: 0 16px;
+    }
+    .submit-card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      padding: 40px;
+    }
+    .submit-logo {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a2744;
+      margin-bottom: 8px;
+    }
+    .submit-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a2744;
+      margin: 20px 0 6px;
+    }
+    .submit-round {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+    .submit-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #3b82f6;
+      margin-bottom: 16px;
+    }
+    .submit-divider { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
+    .submit-instructions {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      padding: 14px 16px;
+      border-radius: 0 8px 8px 0;
+      font-size: 14px;
+      color: #1e40af;
+      margin-bottom: 24px;
+      line-height: 1.7;
+    }
+    .doc-upload-section { margin-bottom: 20px; }
+    .doc-upload-label {
+      font-weight: 600;
+      color: #1a2744;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .doc-uploaded { color: #10b981; font-size: 13px; }
+    .doc-upload-zone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+    .doc-upload-zone:hover { border-color: #3b82f6; background: #eff6ff; color: #3b82f6; }
+    .doc-upload-zone.has-file { border-color: #10b981; background: #f0fdf4; color: #10b981; }
+    .doc-upload-zone .zone-icon { font-size: 28px; margin-bottom: 6px; }
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+    .success-box {
+      text-align: center;
+      padding: 32px 0;
+    }
+    .success-icon { font-size: 64px; margin-bottom: 16px; }
+    .success-title { font-size: 22px; font-weight: 700; color: #10b981; margin-bottom: 8px; }
+    .success-desc { color: #64748b; font-size: 15px; line-height: 1.7; }
+    .alert-submit {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .alert-submit-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .alert-submit-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .doc-status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .doc-status-item {
+      text-align: center;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .doc-status-item.done { background: #f0fdf4; color: #166534; }
+    .doc-status-item.missing { background: #fef2f2; color: #991b1b; }
+    .doc-status-icon { font-size: 20px; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+<div class="submit-container">
+  <div class="submit-card">
+    <div class="submit-logo">StockOps</div>
+
+    <div class="submit-title">주식매수선택권 서류 제출</div>
+    <div class="submit-round">{{ round.name }}</div>
+    <div class="submit-name">{{ applicant.name }} 님</div>
+
+    <hr class="submit-divider">
+
+    {% if submitted and not just_submitted %}
+    <!-- Already fully submitted -->
+    <div class="success-box">
+      <div class="success-icon">&#9989;</div>
+      <div class="success-title">서류 제출이 완료되었습니다</div>
+      <div class="success-desc">
+        3가지 서류(신청서, 신분증사본, 계좌사본)가 모두 제출되었습니다.<br>
+        담당자가 확인 후 연락드리겠습니다.
+      </div>
+    </div>
+
+    <div class="doc-status-grid">
+      <div class="doc-status-item done">
+        <div class="doc-status-icon">&#10003;</div>신청서
+      </div>
+      <div class="doc-status-item done">
+        <div class="doc-status-icon">&#10003;</div>신분증사본
+      </div>
+      <div class="doc-status-item done">
+        <div class="doc-status-icon">&#10003;</div>계좌사본
+      </div>
+    </div>
+
+    {% else %}
+
+    {% if just_submitted %}
+      {% if saved %}
+      <div class="alert-submit alert-submit-success">
+        &#10003; 제출 완료: {{ saved | join(', ') }}
+      </div>
+      {% endif %}
+      {% if errors %}
+      <div class="alert-submit alert-submit-error">
+        &#9888; 오류: {{ errors | join(', ') }}
+      </div>
+      {% endif %}
+
+      {% if submitted %}
+      <div class="success-box">
+        <div class="success-icon">&#9989;</div>
+        <div class="success-title">모든 서류가 제출 완료되었습니다!</div>
+        <div class="success-desc">담당자가 확인 후 연락드리겠습니다.</div>
+      </div>
+      {% endif %}
+    {% endif %}
+
+    {% if not submitted %}
+    <div class="submit-instructions">
+      아래 3가지 서류를 각각 업로드하여 제출하세요.<br>
+      &#183; 신청서 2부 (PDF 또는 스캔 이미지)<br>
+      &#183; 신분증 사본<br>
+      &#183; 증권 계좌 사본
+    </div>
+
+    <!-- Current status -->
+    <div class="doc-status-grid">
+      <div class="doc-status-item {% if 'application' in doc_map %}done{% else %}missing{% endif %}">
+        <div class="doc-status-icon">{% if 'application' in doc_map %}&#10003;{% else %}&#10007;{% endif %}</div>
+        신청서
+      </div>
+      <div class="doc-status-item {% if 'id_copy' in doc_map %}done{% else %}missing{% endif %}">
+        <div class="doc-status-icon">{% if 'id_copy' in doc_map %}&#10003;{% else %}&#10007;{% endif %}</div>
+        신분증사본
+      </div>
+      <div class="doc-status-item {% if 'account_copy' in doc_map %}done{% else %}missing{% endif %}">
+        <div class="doc-status-icon">{% if 'account_copy' in doc_map %}&#10003;{% else %}&#10007;{% endif %}</div>
+        계좌사본
+      </div>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data" id="submit-form">
+
+      <!-- 신청서 -->
+      <div class="doc-upload-section">
+        <div class="doc-upload-label">
+          &#128196; 신청서
+          {% if 'application' in doc_map %}
+          <span class="doc-uploaded">&#10003; 제출됨 (재업로드 가능)</span>
+          {% endif %}
+        </div>
+        <div class="doc-upload-zone {% if 'application' in doc_map %}has-file{% endif %}"
+             id="zone-application" onclick="triggerFile('file-application')">
+          <div class="zone-icon">&#128196;</div>
+          <div id="label-application">
+            {% if 'application' in doc_map %}
+              {{ doc_map.application.original_filename }} (재업로드)
+            {% else %}
+              클릭하여 파일 선택 (PDF, JPG, PNG, HWP)
+            {% endif %}
+          </div>
+        </div>
+        <input type="file" id="file-application" name="application"
+               accept=".pdf,.jpg,.jpeg,.png,.hwp,.hwpx,.doc,.docx"
+               onchange="showSelected('file-application', 'label-application', 'zone-application')"
+               style="display:none">
+      </div>
+
+      <!-- 신분증사본 -->
+      <div class="doc-upload-section">
+        <div class="doc-upload-label">
+          &#128100; 신분증사본
+          {% if 'id_copy' in doc_map %}
+          <span class="doc-uploaded">&#10003; 제출됨 (재업로드 가능)</span>
+          {% endif %}
+        </div>
+        <div class="doc-upload-zone {% if 'id_copy' in doc_map %}has-file{% endif %}"
+             id="zone-id_copy" onclick="triggerFile('file-id_copy')">
+          <div class="zone-icon">&#128100;</div>
+          <div id="label-id_copy">
+            {% if 'id_copy' in doc_map %}
+              {{ doc_map.id_copy.original_filename }} (재업로드)
+            {% else %}
+              클릭하여 파일 선택 (PDF, JPG, PNG)
+            {% endif %}
+          </div>
+        </div>
+        <input type="file" id="file-id_copy" name="id_copy"
+               accept=".pdf,.jpg,.jpeg,.png"
+               onchange="showSelected('file-id_copy', 'label-id_copy', 'zone-id_copy')"
+               style="display:none">
+      </div>
+
+      <!-- 계좌사본 -->
+      <div class="doc-upload-section">
+        <div class="doc-upload-label">
+          &#127974; 계좌사본
+          {% if 'account_copy' in doc_map %}
+          <span class="doc-uploaded">&#10003; 제출됨 (재업로드 가능)</span>
+          {% endif %}
+        </div>
+        <div class="doc-upload-zone {% if 'account_copy' in doc_map %}has-file{% endif %}"
+             id="zone-account_copy" onclick="triggerFile('file-account_copy')">
+          <div class="zone-icon">&#127974;</div>
+          <div id="label-account_copy">
+            {% if 'account_copy' in doc_map %}
+              {{ doc_map.account_copy.original_filename }} (재업로드)
+            {% else %}
+              클릭하여 파일 선택 (PDF, JPG, PNG)
+            {% endif %}
+          </div>
+        </div>
+        <input type="file" id="file-account_copy" name="account_copy"
+               accept=".pdf,.jpg,.jpeg,.png"
+               onchange="showSelected('file-account_copy', 'label-account_copy', 'zone-account_copy')"
+               style="display:none">
+      </div>
+
+      <button type="submit" class="btn btn-primary submit-btn">서류 제출하기</button>
+    </form>
+    {% endif %}
+
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  function triggerFile(id) {
+    document.getElementById(id).click();
+  }
+  function showSelected(inputId, labelId, zoneId) {
+    const input = document.getElementById(inputId);
+    const label = document.getElementById(labelId);
+    const zone = document.getElementById(zoneId);
+    if (input.files.length > 0) {
+      label.textContent = input.files[0].name;
+      zone.classList.add('has-file');
+    }
+  }
+</script>
+</body>
+</html>
