@@ -93,6 +93,18 @@ def init_db():
             note TEXT,
             FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS reg_config (
+            round_id INTEGER PRIMARY KEY,
+            reg_date TEXT,
+            issue_date TEXT,
+            par_value INTEGER DEFAULT 500,
+            capital_before INTEGER,
+            shares_before INTEGER,
+            company_name TEXT DEFAULT 'S2W Inc.',
+            company_reg_num TEXT,
+            FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
+        );
     """)
     conn.commit()
     conn.close()
@@ -450,6 +462,44 @@ def delete_holding_subject(subject_id):
 def delete_all_holding_subjects(round_id):
     conn = get_db()
     conn.execute("DELETE FROM holding_subjects WHERE round_id=?", (round_id,))
+    conn.commit()
+    conn.close()
+
+
+# ── Registration (Step 04) helpers ────────────────────────────────────────────
+
+def get_reg_config(round_id):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM reg_config WHERE round_id=?", (round_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
+def save_reg_config(round_id, reg_date, issue_date, par_value,
+                    capital_before, shares_before, company_name, company_reg_num):
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO reg_config
+           (round_id, reg_date, issue_date, par_value, capital_before, shares_before,
+            company_name, company_reg_num)
+           VALUES (?,?,?,?,?,?,?,?)
+           ON CONFLICT(round_id) DO UPDATE SET
+             reg_date=excluded.reg_date,
+             issue_date=excluded.issue_date,
+             par_value=excluded.par_value,
+             capital_before=excluded.capital_before,
+             shares_before=excluded.shares_before,
+             company_name=excluded.company_name,
+             company_reg_num=excluded.company_reg_num""",
+        (round_id, reg_date, issue_date,
+         int(par_value) if par_value else 500,
+         int(capital_before) if capital_before else None,
+         int(shares_before) if shares_before else None,
+         company_name or 'S2W Inc.',
+         company_reg_num or '')
+    )
     conn.commit()
     conn.close()
 
