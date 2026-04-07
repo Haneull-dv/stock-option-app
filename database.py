@@ -105,6 +105,17 @@ def init_db():
             company_reg_num TEXT,
             FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS issuance_config (
+            round_id INTEGER PRIMARY KEY,
+            payment_date TEXT,
+            dividend_base_date TEXT,
+            listing_date TEXT,
+            contact_name TEXT DEFAULT '정민우',
+            contact_phone TEXT DEFAULT '010-3615-4909',
+            stock_code TEXT DEFAULT '488280',
+            FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
+        );
     """)
     conn.commit()
     conn.close()
@@ -502,6 +513,70 @@ def save_reg_config(round_id, reg_date, issue_date, par_value,
     )
     conn.commit()
     conn.close()
+
+
+# ── Issuance (Step 05) helpers ────────────────────────────────────────────────
+
+def get_issuance_config(round_id):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM issuance_config WHERE round_id=?", (round_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
+def save_issuance_config(round_id, payment_date, dividend_base_date,
+                         listing_date, contact_name, contact_phone, stock_code):
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO issuance_config
+           (round_id, payment_date, dividend_base_date, listing_date,
+            contact_name, contact_phone, stock_code)
+           VALUES (?,?,?,?,?,?,?)
+           ON CONFLICT(round_id) DO UPDATE SET
+             payment_date=excluded.payment_date,
+             dividend_base_date=excluded.dividend_base_date,
+             listing_date=excluded.listing_date,
+             contact_name=excluded.contact_name,
+             contact_phone=excluded.contact_phone,
+             stock_code=excluded.stock_code""",
+        (round_id, payment_date or '', dividend_base_date or '',
+         listing_date or '', contact_name or '정민우',
+         contact_phone or '010-3615-4909', stock_code or '488280')
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_applicants_by_price(round_id, price):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT * FROM applicants
+           WHERE round_id=? AND exercise_price=?
+           ORDER BY sort_order, id""",
+        (round_id, price)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_documents_for_applicant_ids(applicant_ids, doc_type):
+    """Return documents of a given type for specific applicant IDs."""
+    if not applicant_ids:
+        return []
+    conn = get_db()
+    placeholders = ','.join('?' * len(applicant_ids))
+    rows = conn.execute(
+        f"""SELECT d.*, a.name, a.sort_order, a.exercise_price
+            FROM documents d
+            JOIN applicants a ON d.applicant_id = a.id
+            WHERE d.applicant_id IN ({placeholders}) AND d.doc_type=?
+            ORDER BY a.sort_order, a.id""",
+        (*applicant_ids, doc_type)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # ── Round statistics ───────────────────────────────────────────────────────────

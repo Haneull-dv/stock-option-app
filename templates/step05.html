@@ -1,0 +1,368 @@
+{% extends 'base.html' %}
+{% block title %}Step 05 - 예탁원 신주발행 | {{ round.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="/round/{{ round.id }}" class="breadcrumb">&larr; {{ round.name }}</a>
+    <h1 class="page-title">STEP 05 &mdash; 예탁원 신주발행의뢰</h1>
+    <p class="page-subtitle">한국예탁결제원 행사가액별 신주발행 등록 서류 준비</p>
+  </div>
+</div>
+
+<!-- ① 기본 정보 설정 -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">① 기본 정보 설정</h2>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+    <div class="form-group">
+      <label class="form-label required">납입일</label>
+      <input type="date" id="payment-date" class="form-control"
+             value="{{ config.payment_date or (round.exercise_date | replace('.', '-') if round.exercise_date else '') }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">배당기산일</label>
+      <input type="date" id="dividend-base-date" class="form-control"
+             value="{{ config.dividend_base_date or '' }}">
+      <span style="font-size:12px;color:var(--text-muted);">보통 해당 사업연도 1/1</span>
+    </div>
+    <div class="form-group">
+      <label class="form-label">유통(상장)예정일</label>
+      <input type="date" id="listing-date" class="form-control"
+             value="{{ config.listing_date or '' }}">
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:12px;">
+    <div class="form-group">
+      <label class="form-label">담당자명</label>
+      <input type="text" id="contact-name" class="form-control"
+             value="{{ config.contact_name or '정민우' }}" placeholder="정민우">
+    </div>
+    <div class="form-group">
+      <label class="form-label">연락처</label>
+      <input type="text" id="contact-phone" class="form-control"
+             value="{{ config.contact_phone or '010-3615-4909' }}" placeholder="010-3615-4909">
+    </div>
+    <div class="form-group">
+      <label class="form-label">종목코드</label>
+      <input type="text" id="stock-code" class="form-control"
+             value="{{ config.stock_code or '488280' }}" placeholder="488280"
+             style="max-width:120px;">
+    </div>
+  </div>
+  <div style="margin-top:12px;">
+    <button class="btn btn-outline btn-sm" onclick="saveConfig()">저장</button>
+  </div>
+</div>
+
+<!-- ② 행사가액별 신청자 현황 -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">② 행사가액별 신청자 현황</h2>
+  </div>
+
+  {% if not prices %}
+  <p style="text-align:center;color:var(--text-muted);padding:24px;">
+    행사가액이 없습니다. 회차 정보에서 행사가액을 등록하세요.
+  </p>
+  {% endif %}
+
+  {% for price in prices %}
+  {% set grp = price_groups[price] %}
+  <div style="margin-bottom:24px;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+      <span style="display:inline-block;padding:4px 12px;background:var(--color-primary);color:#fff;border-radius:4px;font-size:13px;font-weight:700;">
+        {{ '{:,}'.format(price) }}원
+      </span>
+      <span style="font-size:13px;color:var(--text-muted);">
+        {{ grp.count }}명 / {{ '{:,}'.format(grp.qty) }}주
+      </span>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="col-center" style="width:48px;">No.</th>
+            <th>성명</th>
+            <th class="col-center">수량 (주)</th>
+            <th>증권사</th>
+            <th>계좌번호</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ap in grp.applicants %}
+          <tr>
+            <td class="col-center">{{ loop.index }}</td>
+            <td>{{ ap.name }}</td>
+            <td class="col-center">{{ '{:,}'.format(ap.quantity) if ap.quantity else '-' }}</td>
+            <td>{{ ap.broker or '-' }}</td>
+            <td>{{ ap.account_number or '-' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px;">해당 가액 신청자 없음</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ③ 행사가액별 구비서류 체크리스트 -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">③ 행사가액별 구비서류 체크리스트</h2>
+  </div>
+  <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+    각 행사가액별 폴더에 준비해야 할 서류 목록입니다. 자동생성 가능한 항목은 ④에서 일괄 생성됩니다.
+  </p>
+
+  {% for price in prices %}
+  <div style="margin-bottom:28px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <span style="font-size:14px;font-weight:700;">{{ '{:,}'.format(price) }}원 폴더</span>
+      <span style="font-size:12px;color:var(--text-muted);">
+        완료: <strong class="price-done-count" data-price="{{ price }}">0</strong> / 10
+      </span>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:36px;text-align:center;">
+              <input type="checkbox" class="chk-all-price" data-price="{{ price }}"
+                     onchange="toggleAllPrice(this, {{ price }})">
+            </th>
+            <th class="col-center" style="width:60px;">번호</th>
+            <th>서류명</th>
+            <th>비고</th>
+            <th class="col-center" style="width:80px;">자동생성</th>
+            <th class="col-center" style="width:60px;">완료</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">전자등록</td>
+            <td>신주발행의뢰문서 (HWP)</td>
+            <td style="color:var(--text-muted);">전자등록 의뢰서 + 붙임1 inline + 붙임2 확약서</td>
+            <td class="col-center">-</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">붙임1</td>
+            <td>일괄발행등록 세부내역 <strong>(XLSX)</strong></td>
+            <td style="color:var(--text-muted);">행사자별 계좌/주식수 — 실명번호는 수동입력</td>
+            <td class="col-center" style="color:var(--color-success);font-weight:700;">O</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">붙임2</td>
+            <td>일괄발행등록 의뢰확약서</td>
+            <td style="color:var(--text-muted);">법인인감 날인 필요</td>
+            <td class="col-center">-</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">붙임3</td>
+            <td>발행근거 — 정관 사본</td>
+            <td style="color:var(--text-muted);">공통 (원본대조필 후 법인인감 날인)</td>
+            <td class="col-center">-</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">붙임4</td>
+            <td>주주총회의사록 + 조정산식</td>
+            <td style="color:var(--text-muted);">가액별 부여 당시 의사록 (매 행사시 동일)</td>
+            <td class="col-center">-</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">붙임5</td>
+            <td>주식매수선택권 부여및행사내역서</td>
+            <td style="color:var(--text-muted);">가액별 작성 (수량변동 유무에 따라 양식 다름)</td>
+            <td class="col-center">-</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">붙임6</td>
+            <td>배정자 실명확인증표 <strong>(신분증 합본)</strong></td>
+            <td style="color:var(--text-muted);">Step01 신분증 → 가액별 자동 합본</td>
+            <td class="col-center" style="color:var(--color-success);font-weight:700;">O</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">붙임7</td>
+            <td>배정자 증권계좌사본 <strong>(합본)</strong></td>
+            <td style="color:var(--text-muted);">Step01 계좌사본 → 가액별 자동 합본</td>
+            <td class="col-center" style="color:var(--color-success);font-weight:700;">O</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">붙임8</td>
+            <td>주식납입금보관증명서</td>
+            <td style="color:var(--text-muted);">은행 발급 (재경팀 전달)</td>
+            <td class="col-center">-</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+          <tr>
+            <td style="text-align:center;"><input type="checkbox" class="doc-chk-{{ price }}" onchange="onPriceDocCheck({{ price }})"></td>
+            <td class="col-center">붙임9</td>
+            <td>법인등기부등본</td>
+            <td style="color:var(--text-muted);">공통 (등기 완료 후 발급)</td>
+            <td class="col-center">-</td>
+            <td class="col-center chk-mark">&#9744;</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if prices %}
+  <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
+    <p style="font-size:13px;color:var(--text-muted);">
+      <strong>공통 서류 (별도 준비)</strong>: 발행등록확인신청서, 법인인감증명서
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ④ 서류 자동생성 -->
+<div class="section-card">
+  <div class="section-card-header">
+    <h2 class="section-card-title">④ 서류 자동생성</h2>
+  </div>
+  <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+    행사가액별 폴더를 생성하고, 자동생성 가능한 서류를 만듭니다.<br>
+    <strong>붙임1</strong> 세부내역 XLSX (실명번호는 수동입력 필요) &nbsp;|&nbsp;
+    <strong>붙임6</strong> 신분증 합본 PDF &nbsp;|&nbsp;
+    <strong>붙임7</strong> 계좌사본 합본 PDF
+  </p>
+  <button class="btn btn-primary btn-lg" id="generate-btn" onclick="generateDocs()">
+    &#9889; 행사가액별 서류 생성
+  </button>
+  <div id="generate-result" style="margin-top:16px;"></div>
+
+  {% if outputs %}
+  <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
+    <p style="font-size:13px;font-weight:600;margin-bottom:8px;">생성 이력</p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      {% for out in outputs %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;">
+        <span style="font-size:13px;">
+          {{ out.output_filename.split('/')[-1] }}
+          <span style="color:var(--text-muted);font-size:11px;margin-left:8px;">{{ out.created_at }}</span>
+        </span>
+        <a href="/round/{{ round.id }}/step05/download/{{ out.output_filename }}"
+           class="btn btn-outline btn-xs">다운로드</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+const ROUND_ID = {{ round.id }};
+
+// ── 기본 정보 저장 ─────────────────────────────────────────
+async function saveConfig() {
+  const payload = {
+    payment_date:       document.getElementById('payment-date').value,
+    dividend_base_date: document.getElementById('dividend-base-date').value,
+    listing_date:       document.getElementById('listing-date').value,
+    contact_name:       document.getElementById('contact-name').value.trim(),
+    contact_phone:      document.getElementById('contact-phone').value.trim(),
+    stock_code:         document.getElementById('stock-code').value.trim(),
+  };
+  try {
+    const res = await apiCall(`/round/${ROUND_ID}/step05/config`, 'POST', payload);
+    if (res.success) showToast('저장되었습니다', 'success');
+    else showToast(res.message || '저장 실패', 'error');
+  } catch (e) {
+    showToast('오류: ' + e.message, 'error');
+  }
+}
+
+// ── 서류 생성 ──────────────────────────────────────────────
+async function generateDocs() {
+  const btn = document.getElementById('generate-btn');
+  btn.disabled = true;
+  btn.textContent = '생성 중...';
+  const resultEl = document.getElementById('generate-result');
+  resultEl.innerHTML = '';
+
+  try {
+    const res = await apiCall(`/round/${ROUND_ID}/step05/generate`, 'POST', {});
+    if (!res.success) {
+      showToast(res.message || '생성 실패', 'error');
+      return;
+    }
+    let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
+    for (const item of res.data) {
+      if (item.success) {
+        html += `
+          <div style="display:flex;align-items:center;justify-content:space-between;
+                      padding:10px 14px;background:#f0f7f0;border-radius:6px;border:1px solid #c3e6cb;">
+            <span style="font-size:13px;">${item.name} 생성 완료</span>
+            <a href="/round/${ROUND_ID}/step05/download/${item.filename}"
+               class="btn btn-primary btn-sm">다운로드</a>
+          </div>`;
+      } else {
+        html += `
+          <div style="padding:10px 14px;background:#fff3f3;border-radius:6px;border:1px solid #f5c6cb;">
+            <span style="font-size:13px;color:#c0392b;">${item.name} 실패: ${item.message || ''}</span>
+          </div>`;
+      }
+    }
+    html += '</div>';
+    resultEl.innerHTML = html;
+    showToast('생성 완료', 'success');
+  } catch (e) {
+    showToast('오류: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '\u26A1 행사가액별 서류 생성';
+  }
+}
+
+// ── 체크리스트 ─────────────────────────────────────────────
+function toggleAllPrice(master, price) {
+  document.querySelectorAll(`.doc-chk-${price}`).forEach(cb => {
+    cb.checked = master.checked;
+    updateRowMark(cb);
+  });
+  updatePriceDoneCount(price);
+}
+
+function onPriceDocCheck(price) {
+  document.querySelectorAll(`.doc-chk-${price}`).forEach(updateRowMark);
+  updatePriceDoneCount(price);
+  const all  = document.querySelectorAll(`.doc-chk-${price}`).length;
+  const done = document.querySelectorAll(`.doc-chk-${price}:checked`).length;
+  const master = document.querySelector(`.chk-all-price[data-price="${price}"]`);
+  if (master) master.checked = (done === all);
+}
+
+function updateRowMark(cb) {
+  const td = cb.closest('tr').querySelector('.chk-mark');
+  if (td) td.innerHTML = cb.checked ? '&#9745;' : '&#9744;';
+}
+
+function updatePriceDoneCount(price) {
+  const done = document.querySelectorAll(`.doc-chk-${price}:checked`).length;
+  const el = document.querySelector(`.price-done-count[data-price="${price}"]`);
+  if (el) el.textContent = done;
+}
+</script>
+{% endblock %}

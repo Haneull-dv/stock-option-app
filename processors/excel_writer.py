@@ -1,4 +1,4 @@
-"""행사내역 / 등기신청 엑셀 생성."""
+"""행사내역 / 등기신청 / 신주발행 세부내역 엑셀 생성."""
 import openpyxl
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 import os
@@ -6,6 +6,49 @@ import os
 
 _THIN = Side(style='thin')
 _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
+
+# 증권사 → 계좌관리번호 매핑 (한국예탁결제원 기준)
+BROKER_CODE_MAP = {
+    '교보증권': 1,
+    '신한투자증권': 2, '신한': 2,
+    '한국투자증권': 3, '한국투자': 3, '한투': 3,
+    '대신증권': 4, '대신': 4,
+    '미래에셋증권': 5, '미래에셋': 5,
+    '신영증권': 6,
+    '유진투자증권': 8, '유진': 8,
+    '한양증권': 9,
+    '메리츠증권': 10, '메리츠': 10,
+    'NH투자증권': 12, 'NH': 12,
+    '부국증권': 13,
+    'KB증권': 17, 'KB': 17,
+    '한화투자증권': 21, '한화': 21,
+    '현대차증권': 22,
+    '유화증권': 23,
+    '유안타증권': 24, '유안타': 24,
+    'SK증권': 25,
+    '상상인증권': 29,
+    '삼성증권': 30, '삼성': 30,
+    'DB금융투자': 31, 'DB': 31,
+    '아이엠증권': 46,
+    '키움증권': 50, '키움': 50,
+    '리딩투자증권': 52,
+    '하나증권': 56, '하나': 56,
+    '아이비케이투자증권': 68, 'IBK투자증권': 68,
+    '카카오페이증권': 69, '카카오페이': 69,
+    '디에스투자증권': 70,
+    '다올투자증권': 71, '다올': 71,
+    '케이프투자증권': 72,
+    '한국스탠다드차타드증권': 74,
+    '토스증권': 77, '토스': 77,
+    '비엔케이투자증권': 86, 'BNK투자증권': 86,
+    'LS증권': 752,
+    '코리아에셋투자증권': 753,
+    '한국증권금융': 800,
+    '도이치은행': 850,
+    '한국씨티은행': 1480,
+    '한국스탠다드차타드은행': 1500,
+    '홍콩상하이은행': 1520,
+}
 
 
 def _cell(ws, row, col, value, bold=False, align='left', number_format=None):
@@ -342,6 +385,99 @@ def generate_registration_excel(
     # ── 시트 설정 ──────────────────────────────────────────────────
     ws.freeze_panes = 'A2'
     ws.sheet_view.showGridLines = True
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    wb.save(output_path)
+    return output_path
+
+
+def _broker_to_code(broker_name):
+    """증권사 이름을 계좌관리번호(숫자)로 변환."""
+    if not broker_name:
+        return ''
+    name = broker_name.strip()
+    if name in BROKER_CODE_MAP:
+        return BROKER_CODE_MAP[name]
+    for key, code in BROKER_CODE_MAP.items():
+        if key in name or name in key:
+            return code
+    return ''
+
+
+def generate_issuance_detail_excel(
+        applicants: list,
+        price: int,
+        stock_code: str,
+        output_path: str) -> str:
+    """
+    붙임1 일괄발행등록 세부내역 엑셀 생성 (행사가액별).
+    예탁원 제출 양식: 구분값 | 발행인관리계좌번호 | ... | 종목코드 | 발행횟수 |
+    회차 | 계좌관리번호 | ... | 계좌번호 | 주주명 | 실명번호 | 주식수
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '일괄발행등록세부내역'
+
+    HEADER_FONT = Font(name='맑은 고딕', bold=True, size=9)
+    DATA_FONT   = Font(name='맑은 고딕', size=9)
+    CENTER      = Alignment(horizontal='center', vertical='center')
+    LEFT        = Alignment(horizontal='left', vertical='center')
+
+    headers = ['구분값', '발행인관리계좌번호', '', '', '종목코드',
+               '발행횟수', '회차', '계좌관리번호', '', '',
+               '계좌번호', '주주명', '실명번호', '주식수']
+    for ci, label in enumerate(headers, 1):
+        cell = ws.cell(1, ci, label)
+        cell.font = HEADER_FONT
+        cell.alignment = CENTER
+        cell.border = _BORDER
+
+    for idx, ap in enumerate(applicants):
+        r = idx + 2
+        broker_code = _broker_to_code(ap.get('broker', ''))
+        vals = [
+            '01',                                          # A
+            '입력불필요' if idx == 0 else '',              # B
+            '0001',                                        # C
+            50,                                            # D
+            int(stock_code),                               # E
+            '',                                            # F
+            '',                                            # G
+            broker_code,                                   # H
+            '0000',                                        # I
+            '02',                                          # J
+            ap.get('account_number', '') or '',             # K
+            ap.get('name', ''),                            # L
+            ap.get('rrn', '') or '',                       # M (OCR 추출 or 수동입력)
+            ap.get('quantity', 0) or 0,                    # N
+        ]
+        for ci, val in enumerate(vals, 1):
+            cell = ws.cell(r, ci, val)
+            cell.font = DATA_FONT
+            cell.alignment = CENTER if ci != 12 else LEFT
+            cell.border = _BORDER
+            if ci == 14:  # 주식수 콤마 포맷
+                cell.number_format = '#,##0'
+
+    widths = {'A': 8, 'B': 16, 'C': 6, 'D': 4, 'E': 10, 'F': 8,
+              'G': 6, 'H': 14, 'I': 6, 'J': 4, 'K': 18, 'L': 20,
+              'M': 18, 'N': 10}
+    for col, w in widths.items():
+        ws.column_dimensions[col].width = w
+
+    # 계좌관리번호 참조 시트
+    ws2 = wb.create_sheet('계좌관리번호')
+    ws2.cell(1, 1, '계좌관리번호 현황').font = Font(name='맑은 고딕', bold=True, size=10)
+    seen = set()
+    ref_row = 2
+    for name, code in sorted(BROKER_CODE_MAP.items(), key=lambda x: x[1]):
+        if code not in seen and len(name) > 2:
+            ws2.cell(ref_row, 1, code).font = DATA_FONT
+            ws2.cell(ref_row, 2, name).font = DATA_FONT
+            seen.add(code)
+            ref_row += 1
+    ws2.column_dimensions['A'].width = 6
+    ws2.column_dimensions['B'].width = 20
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wb.save(output_path)

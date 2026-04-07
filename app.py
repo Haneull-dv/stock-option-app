@@ -14,7 +14,8 @@ import database as db
 from processors.pdf_merger import merge_docs_by_type, get_pdf_page_count
 from processors.hwpx_writer import generate_hwpx
 from processors.number_korean import number_to_korean
-from processors.excel_writer import generate_exercise_excel, generate_registration_excel
+from processors.excel_writer import generate_exercise_excel, generate_registration_excel, generate_issuance_detail_excel
+from processors.ocr_reader import extract_rrn_batch
 from processors.docx_writer import generate_hwakjakseo, generate_gongmun
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1189,6 +1190,188 @@ def download_step04(round_id, filename):
     }
     display = display_map.get(safe, safe)
     mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    return send_file(full_path, mimetype=mime, as_attachment=True, download_name=display)
+
+
+# ── Step 05 – 예탁원 신주발행의뢰 ─────────────────────────────────────────────
+
+@app.route('/round/<int:round_id>/step05')
+def step05(round_id):
+    round_obj = db.get_round(round_id)
+    if not round_obj:
+        abort(404)
+    applicants = db.get_applicants(round_id)
+    prices     = db.get_prices_for_round(round_id)
+    config     = db.get_issuance_config(round_id)
+    outputs    = db.get_step_outputs(round_id, 'step05')
+
+    # 행사가액별 신청자 분류
+    price_groups = {}
+    for p in prices:
+        group = [ap for ap in applicants if ap.get('exercise_price') == p]
+        total_qty = sum(ap.get('quantity') or 0 for ap in group)
+        price_groups[p] = {'applicants': group, 'count': len(group), 'qty': total_qty}
+
+    return render_template(
+        'step05.html',
+        round=round_obj,
+        applicants=applicants,
+        prices=prices,
+        config=config,
+        outputs=outputs,
+        price_groups=price_groups,
+    )
+
+
+@app.route('/round/<int:round_id>/step05/config', methods=['POST'])
+def step05_config(round_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        db.save_issuance_config(
+            round_id,
+            data.get('payment_date', ''),
+            data.get('dividend_base_date', ''),
+            data.get('listing_date', ''),
+            data.get('contact_name', '정민우'),
+            data.get('contact_phone', '010-3615-4909'),
+            data.get('stock_code', '488280'),
+        )
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(success=False, message=str(e))
+
+
+@app.route('/round/<int:round_id>/step05/generate', methods=['POST'])
+def step05_generate(round_id):
+    round_obj = db.get_round(round_id)
+    if not round_obj:
+        return jsonify(success=False, message='회차를 찾을 수 없습니다.'), 404
+
+    applicants = db.get_applicants(round_id)
+    if not applicants:
+        return jsonify(success=False, message='신청자 데이터가 없습니다.')
+
+    prices = db.get_prices_for_round(round_id)
+    config = db.get_issuance_config(round_id)
+    stock_code = config.get('stock_code') or '488280'
+
+    # OCR: 신분증에서 주민번호 일괄 추출
+    rrn_map = {}  # {applicant_id: 'XXXXXX-XXXXXXX'}
+    try:
+        all_ids = [ap['id'] for ap in applicants]
+        id_docs = db.get_documents_for_applicant_ids(all_ids, 'id_copy')
+        if id_docs:
+            rrn_map = extract_rrn_batch(id_docs)
+    except Exception:
+        pass  # OCR 실패해도 빈칸으로 진행
+
+    results = []
+    for price in prices:
+        group = [ap for ap in applicants if ap.get('exercise_price') == price]
+        if not group:
+            continue
+
+        # 각 신청자에 OCR 추출 실명번호 주입
+        for ap in group:
+            ap['rrn'] = rrn_map.get(ap['id'], '')
+
+        # 행사가액별 폴더
+        price_dir = os.path.join(
+            OUTPUT_FOLDER, str(round_id), 'step05',
+            f'신주발행의뢰_스톡옵션_{price}'
+        )
+        os.makedirs(price_dir, exist_ok=True)
+
+        # 붙임1: 일괄발행등록 세부내역 XLSX
+        xlsx_name = f'(붙임1) 일괄발행등록_세부내역_{price}원.xlsx'
+        xlsx_path = os.path.join(price_dir, xlsx_name)
+        try:
+            generate_issuance_detail_excel(group, price, stock_code, xlsx_path)
+            rel_name = f'신주발행의뢰_스톡옵션_{price}/{xlsx_name}'
+            db.save_step_output(round_id, 'step05', rel_name, xlsx_path)
+            results.append({
+                'name': f'붙임1 세부내역 {price:,}원 ({len(group)}명)',
+                'filename': rel_name,
+                'success': True,
+            })
+        except Exception as e:
+            results.append({
+                'name': f'붙임1 세부내역 {price:,}원',
+                'success': False,
+                'message': str(e),
+            })
+
+        # 붙임6: 배정자 실명확인증표 (신분증 PDF 합본)
+        ap_ids = [ap['id'] for ap in group]
+        id_docs = db.get_documents_for_applicant_ids(ap_ids, 'id_copy')
+        if id_docs:
+            pdf_name = f'(붙임6) 배정자_실명확인증표_{price}원.pdf'
+            pdf_path = os.path.join(price_dir, pdf_name)
+            try:
+                from processors.pdf_merger import merge_pdfs_in_order
+                file_paths = [d['file_path'] for d in id_docs if os.path.isfile(d.get('file_path', ''))]
+                if file_paths:
+                    merge_pdfs_in_order(file_paths, pdf_path)
+                    rel_name = f'신주발행의뢰_스톡옵션_{price}/{pdf_name}'
+                    db.save_step_output(round_id, 'step05', rel_name, pdf_path)
+                    results.append({
+                        'name': f'붙임6 신분증합본 {price:,}원 ({len(file_paths)}건)',
+                        'filename': rel_name,
+                        'success': True,
+                    })
+            except Exception as e:
+                results.append({
+                    'name': f'붙임6 신분증합본 {price:,}원',
+                    'success': False,
+                    'message': str(e),
+                })
+
+        # 붙임7: 배정자 증권계좌사본 (계좌 PDF 합본)
+        acct_docs = db.get_documents_for_applicant_ids(ap_ids, 'account_copy')
+        if acct_docs:
+            pdf_name = f'(붙임7) 배정자_증권계좌사본_{price}원.pdf'
+            pdf_path = os.path.join(price_dir, pdf_name)
+            try:
+                from processors.pdf_merger import merge_pdfs_in_order
+                file_paths = [d['file_path'] for d in acct_docs if os.path.isfile(d.get('file_path', ''))]
+                if file_paths:
+                    merge_pdfs_in_order(file_paths, pdf_path)
+                    rel_name = f'신주발행의뢰_스톡옵션_{price}/{pdf_name}'
+                    db.save_step_output(round_id, 'step05', rel_name, pdf_path)
+                    results.append({
+                        'name': f'붙임7 계좌사본합본 {price:,}원 ({len(file_paths)}건)',
+                        'filename': rel_name,
+                        'success': True,
+                    })
+            except Exception as e:
+                results.append({
+                    'name': f'붙임7 계좌사본합본 {price:,}원',
+                    'success': False,
+                    'message': str(e),
+                })
+
+    if not results:
+        return jsonify(success=False, message='생성할 데이터가 없습니다.')
+
+    return jsonify(success=True, data=results)
+
+
+@app.route('/round/<int:round_id>/step05/download/<path:filename>')
+def download_step05(round_id, filename):
+    output_dir = os.path.join(OUTPUT_FOLDER, str(round_id), 'step05')
+    safe       = filename.replace('\\', '/')
+    full_path  = os.path.join(output_dir, safe)
+    full_path  = os.path.normpath(full_path)
+    # 보안: output_dir 밖으로 나가지 못하게
+    if not full_path.startswith(os.path.normpath(output_dir)):
+        abort(404)
+    if not os.path.isfile(full_path):
+        abort(404)
+    display = os.path.basename(safe)
+    if display.endswith('.xlsx'):
+        mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    else:
+        mime = 'application/pdf'
     return send_file(full_path, mimetype=mime, as_attachment=True, download_name=display)
 
 
