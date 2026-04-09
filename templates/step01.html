@@ -42,6 +42,8 @@
           <th>수량</th>
           <th>증권사</th>
           <th>계좌번호</th>
+          <th>실명번호(OCR)</th>
+          <th>OCR 계좌번호</th>
           <th class="col-center">신청서</th>
           <th class="col-center">신분증</th>
           <th class="col-center">계좌사본</th>
@@ -61,6 +63,12 @@
           <td>{{ '{:,}'.format(ap.quantity) if ap.quantity else '-' }}</td>
           <td>{{ ap.broker or '-' }}</td>
           <td>{{ ap.account_number or '-' }}</td>
+          <td class="ocr-rrn" data-id="{{ ap.id }}" style="font-size:12px;color:#555;">
+            {{ ap.rrn or '-' }}
+          </td>
+          <td class="ocr-account" data-id="{{ ap.id }}" style="font-size:12px;color:#555;">
+            {{ ap.ocr_account or '-' }}
+          </td>
           <td class="col-center doc-status" data-id="{{ ap.id }}" data-type="application">
             {% if ap.has_application %}<span class="doc-check">&#10003;</span>{% else %}<span class="doc-x">&#10007;</span>{% endif %}
           </td>
@@ -81,7 +89,7 @@
         </tr>
         {% else %}
         <tr id="empty-row">
-          <td colspan="12" class="empty-table-cell">
+          <td colspan="14" class="empty-table-cell">
             신청자를 추가하세요
           </td>
         </tr>

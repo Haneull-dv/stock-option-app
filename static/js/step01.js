@@ -69,7 +69,7 @@ async function deleteSelected() {
   // 빈 테이블 처리
   const tbody = document.getElementById('applicant-tbody');
   if (tbody && tbody.querySelectorAll('tr.applicant-row').length === 0) {
-    tbody.innerHTML = `<tr id="empty-row"><td colspan="12" class="empty-table-cell">신청자를 추가하세요</td></tr>`;
+    tbody.innerHTML = `<tr id="empty-row"><td colspan="14" class="empty-table-cell">신청자를 추가하세요</td></tr>`;
   }
 
   // 순서 번호 재정렬
@@ -432,6 +432,27 @@ function updateDocStatus(applicantId, docType, hasDoc) {
 
   // Update merge counts
   refreshMergeCounts();
+}
+
+function updateOcrResults(applicantId, ocrData) {
+  // Update RRN (실명번호)
+  if (ocrData.rrn) {
+    const rrnCell = document.querySelector(`.ocr-rrn[data-id="${applicantId}"]`);
+    if (rrnCell) {
+      rrnCell.textContent = ocrData.rrn;
+      rrnCell.style.color = '#2563eb'; // 파란색으로 강조
+      setTimeout(() => { rrnCell.style.color = '#555'; }, 2000);
+    }
+  }
+  // Update account number
+  if (ocrData.ocr_account) {
+    const accountCell = document.querySelector(`.ocr-account[data-id="${applicantId}"]`);
+    if (accountCell) {
+      accountCell.textContent = ocrData.ocr_account;
+      accountCell.style.color = '#2563eb';
+      setTimeout(() => { accountCell.style.color = '#555'; }, 2000);
+    }
+  }
 }
 
 async function refreshMergeCounts() {

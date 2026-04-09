@@ -1212,6 +1212,9 @@ def step05(round_id):
         total_qty = sum(ap.get('quantity') or 0 for ap in group)
         price_groups[p] = {'applicants': group, 'count': len(group), 'qty': total_qty}
 
+    # 붙임8 업로드 현황
+    attachment8_map = db.get_all_attachment8(round_id)
+
     return render_template(
         'step05.html',
         round=round_obj,
@@ -1220,6 +1223,7 @@ def step05(round_id):
         config=config,
         outputs=outputs,
         price_groups=price_groups,
+        attachment8_map=attachment8_map,
     )
 
 
@@ -1235,6 +1239,10 @@ def step05_config(round_id):
             data.get('contact_name', '정민우'),
             data.get('contact_phone', '010-3615-4909'),
             data.get('stock_code', '488280'),
+            data.get('agent_name', ''),
+            data.get('agent_phone', ''),
+            data.get('agent_rrn', ''),
+            data.get('agent_address', '경기도 성남시 분당구 대왕판교로192번길 12, 3층'),
         )
         return jsonify(success=True)
     except Exception as e:
@@ -1243,6 +1251,11 @@ def step05_config(round_id):
 
 @app.route('/round/<int:round_id>/step05/generate', methods=['POST'])
 def step05_generate(round_id):
+    """발행가액별 신주발행의뢰 ZIP 파일 생성 (OCR 캐싱 적용)."""
+    print("\n" + "="*80)
+    print(f"[Step05 생성 시작] 회차 ID: {round_id}")
+    print("="*80)
+
     round_obj = db.get_round(round_id)
     if not round_obj:
         return jsonify(success=False, message='회차를 찾을 수 없습니다.'), 404
@@ -1252,103 +1265,154 @@ def step05_generate(round_id):
         return jsonify(success=False, message='신청자 데이터가 없습니다.')
 
     prices = db.get_prices_for_round(round_id)
-    config = db.get_issuance_config(round_id)
-    stock_code = config.get('stock_code') or '488280'
+    if not prices:
+        return jsonify(success=False, message='행사가액이 등록되지 않았습니다.')
 
-    # OCR: 신분증에서 주민번호 일괄 추출
-    rrn_map = {}  # {applicant_id: 'XXXXXX-XXXXXXX'}
-    try:
-        all_ids = [ap['id'] for ap in applicants]
-        id_docs = db.get_documents_for_applicant_ids(all_ids, 'id_copy')
-        if id_docs:
-            rrn_map = extract_rrn_batch(id_docs)
-    except Exception:
-        pass  # OCR 실패해도 빈칸으로 진행
+    print(f"\n[데이터 로드 완료]")
+    print(f"  - 신청자: {len(applicants)}명")
+    print(f"  - 행사가액: {len(prices)}개 ({', '.join(f'{p:,}원' for p in prices)})")
+
+    config = db.get_issuance_config(round_id)
+    attachment8_map = db.get_all_attachment8(round_id)
+
+    # ─────────────────────────────────────────────────────────────
+    # OCR 캐싱: 이미 추출된 데이터는 DB에서 가져오고, 없으면 OCR 실행
+    # ─────────────────────────────────────────────────────────────
+    from processors.ocr_reader import extract_account_and_broker
+
+    print(f"\n[OCR 데이터 준비 중...]")
+    ocr_rrn_success = 0
+    ocr_rrn_fail = 0
+    ocr_account_success = 0
+    ocr_account_fail = 0
+
+    for ap in applicants:
+        ap_id = ap['id']
+        ap_name = ap.get('name', '?')
+
+        # 주민번호: DB에 없으면 OCR
+        if not ap.get('rrn'):
+            id_docs = db.get_documents_for_applicant_ids([ap_id], 'id_copy')
+            if id_docs:
+                try:
+                    rrn_map = extract_rrn_batch(id_docs)
+                    rrn = rrn_map.get(ap_id)
+                    if rrn:
+                        db.update_applicant_ocr(ap_id, rrn=rrn)
+                        ap['rrn'] = rrn
+                        ocr_rrn_success += 1
+                        print(f"  [OCR] {ap_name}: 주민번호 추출 성공")
+                    else:
+                        ocr_rrn_fail += 1
+                        print(f"  [OCR] {ap_name}: 주민번호 추출 실패")
+                except Exception as e:
+                    ocr_rrn_fail += 1
+                    print(f"  [OCR] {ap_name}: 주민번호 추출 오류 - {e}")
+        else:
+            print(f"  [캐시] {ap_name}: 주민번호 이미 있음 ({ap.get('rrn')})")
+
+        # 계좌번호/증권사: DB에 없으면 OCR
+        if not ap.get('ocr_account'):
+            acct_docs = db.get_documents_for_applicant_ids([ap_id], 'account_copy')
+            if acct_docs:
+                try:
+                    account, broker = extract_account_and_broker(acct_docs[0]['file_path'])
+                    if account or broker:
+                        db.update_applicant_ocr(ap_id, ocr_account=account, broker=broker)
+                        ap['ocr_account'] = account
+                        ap['broker'] = broker
+                        ocr_account_success += 1
+                        print(f"  [OCR] {ap_name}: 계좌번호/증권사 추출 성공 ({broker} / {account})")
+                    else:
+                        ocr_account_fail += 1
+                        print(f"  [OCR] {ap_name}: 계좌번호/증권사 추출 실패")
+                except Exception as e:
+                    ocr_account_fail += 1
+                    print(f"  [OCR] {ap_name}: 계좌번호/증권사 추출 오류 - {e}")
+        else:
+            print(f"  [캐시] {ap_name}: 계좌정보 이미 있음 ({ap.get('broker')} / {ap.get('ocr_account')})")
+
+    print(f"\n[OCR 요약]")
+    print(f"  - 주민번호: 성공 {ocr_rrn_success}명, 실패 {ocr_rrn_fail}명")
+    print(f"  - 계좌정보: 성공 {ocr_account_success}명, 실패 {ocr_account_fail}명")
+
+    # ─────────────────────────────────────────────────────────────
+    # 발행가액별 ZIP 생성
+    # ─────────────────────────────────────────────────────────────
+    from processors.step05_generator import generate_step05_zip
+
+    output_base = os.path.join(OUTPUT_FOLDER, str(round_id), 'step05')
+    os.makedirs(output_base, exist_ok=True)
+
+    print(f"\n[발행가액별 ZIP 생성 시작]")
+    print(f"  출력 경로: {output_base}")
 
     results = []
     for price in prices:
+        print(f"\n{'─'*80}")
+        print(f"[{price:,}원 폴더 생성 중...]")
+        print(f"{'─'*80}")
+
         group = [ap for ap in applicants if ap.get('exercise_price') == price]
         if not group:
+            print(f"  ⚠ 신청자 없음, 건너뜀")
             continue
 
-        # 각 신청자에 OCR 추출 실명번호 주입
-        for ap in group:
-            ap['rrn'] = rrn_map.get(ap['id'], '')
+        print(f"  신청자: {len(group)}명 ({', '.join(ap.get('name', '?') for ap in group[:5])}" +
+              (f" 외 {len(group)-5}명" if len(group) > 5 else "") + ")")
 
-        # 행사가액별 폴더
-        price_dir = os.path.join(
-            OUTPUT_FOLDER, str(round_id), 'step05',
-            f'신주발행의뢰_스톡옵션_{price}'
-        )
-        os.makedirs(price_dir, exist_ok=True)
+        # 붙임8 파일 경로
+        attachment8_file = None
+        if price in attachment8_map:
+            attachment8_file = attachment8_map[price].get('file_path')
+            print(f"  붙임8: {attachment8_map[price].get('original_name')} ✓")
+        else:
+            print(f"  붙임8: 업로드 안됨 (건너뜀)")
 
-        # 붙임1: 일괄발행등록 세부내역 XLSX
-        xlsx_name = f'(붙임1) 일괄발행등록_세부내역_{price}원.xlsx'
-        xlsx_path = os.path.join(price_dir, xlsx_name)
         try:
-            generate_issuance_detail_excel(group, price, stock_code, xlsx_path)
-            rel_name = f'신주발행의뢰_스톡옵션_{price}/{xlsx_name}'
-            db.save_step_output(round_id, 'step05', rel_name, xlsx_path)
-            results.append({
-                'name': f'붙임1 세부내역 {price:,}원 ({len(group)}명)',
-                'filename': rel_name,
-                'success': True,
-            })
+            result = generate_step05_zip(
+                round_obj, group, price, config, attachment8_file, output_base
+            )
+
+            if result['success']:
+                # ZIP 파일 정보 저장
+                db.save_step_output(
+                    round_id, 'step05', result['zip_name'], result['zip_path']
+                )
+                print(f"\n  ✓ 생성 완료: {result['zip_name']}")
+                print(f"  - 포함 파일: {len(result['files'])}개")
+                if result.get('errors'):
+                    print(f"  - 경고: {len(result['errors'])}개")
+                    for err in result['errors']:
+                        print(f"    · {err}")
+
+                results.append({
+                    'success': True,
+                    'name': f'{price:,}원 신주발행의뢰',
+                    'filename': result['zip_name'],
+                    'files_count': len(result['files']),
+                    'message': result['message']
+                })
+            else:
+                print(f"\n  ✗ 생성 실패: {result.get('message', '알 수 없는 오류')}")
+                results.append({
+                    'success': False,
+                    'name': f'{price:,}원',
+                    'message': result.get('message', '생성 실패')
+                })
         except Exception as e:
+            print(f"\n  ✗ 예외 발생: {e}")
+            import traceback
+            traceback.print_exc()
             results.append({
-                'name': f'붙임1 세부내역 {price:,}원',
                 'success': False,
-                'message': str(e),
+                'name': f'{price:,}원',
+                'message': str(e)
             })
 
-        # 붙임6: 배정자 실명확인증표 (신분증 PDF 합본)
-        ap_ids = [ap['id'] for ap in group]
-        id_docs = db.get_documents_for_applicant_ids(ap_ids, 'id_copy')
-        if id_docs:
-            pdf_name = f'(붙임6) 배정자_실명확인증표_{price}원.pdf'
-            pdf_path = os.path.join(price_dir, pdf_name)
-            try:
-                from processors.pdf_merger import merge_pdfs_in_order
-                file_paths = [d['file_path'] for d in id_docs if os.path.isfile(d.get('file_path', ''))]
-                if file_paths:
-                    merge_pdfs_in_order(file_paths, pdf_path)
-                    rel_name = f'신주발행의뢰_스톡옵션_{price}/{pdf_name}'
-                    db.save_step_output(round_id, 'step05', rel_name, pdf_path)
-                    results.append({
-                        'name': f'붙임6 신분증합본 {price:,}원 ({len(file_paths)}건)',
-                        'filename': rel_name,
-                        'success': True,
-                    })
-            except Exception as e:
-                results.append({
-                    'name': f'붙임6 신분증합본 {price:,}원',
-                    'success': False,
-                    'message': str(e),
-                })
-
-        # 붙임7: 배정자 증권계좌사본 (계좌 PDF 합본)
-        acct_docs = db.get_documents_for_applicant_ids(ap_ids, 'account_copy')
-        if acct_docs:
-            pdf_name = f'(붙임7) 배정자_증권계좌사본_{price}원.pdf'
-            pdf_path = os.path.join(price_dir, pdf_name)
-            try:
-                from processors.pdf_merger import merge_pdfs_in_order
-                file_paths = [d['file_path'] for d in acct_docs if os.path.isfile(d.get('file_path', ''))]
-                if file_paths:
-                    merge_pdfs_in_order(file_paths, pdf_path)
-                    rel_name = f'신주발행의뢰_스톡옵션_{price}/{pdf_name}'
-                    db.save_step_output(round_id, 'step05', rel_name, pdf_path)
-                    results.append({
-                        'name': f'붙임7 계좌사본합본 {price:,}원 ({len(file_paths)}건)',
-                        'filename': rel_name,
-                        'success': True,
-                    })
-            except Exception as e:
-                results.append({
-                    'name': f'붙임7 계좌사본합본 {price:,}원',
-                    'success': False,
-                    'message': str(e),
-                })
+    print(f"\n{'='*80}")
+    print(f"[Step05 생성 완료] 성공: {sum(1 for r in results if r['success'])}개, 실패: {sum(1 for r in results if not r['success'])}개")
+    print(f"{'='*80}\n")
 
     if not results:
         return jsonify(success=False, message='생성할 데이터가 없습니다.')
@@ -1370,9 +1434,67 @@ def download_step05(round_id, filename):
     display = os.path.basename(safe)
     if display.endswith('.xlsx'):
         mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    elif display.endswith('.zip'):
+        mime = 'application/zip'
     else:
         mime = 'application/pdf'
     return send_file(full_path, mimetype=mime, as_attachment=True, download_name=display)
+
+
+@app.route('/round/<int:round_id>/step05/upload_attachment8/<int:price>', methods=['POST'])
+def upload_attachment8(round_id, price):
+    """발행가액별 붙임8 (주식납입금보관증명서) 업로드."""
+    if 'file' not in request.files:
+        return jsonify(success=False, message='파일이 없습니다.')
+
+    file = request.files['file']
+    if not file or not file.filename:
+        return jsonify(success=False, message='파일을 선택하세요.')
+
+    # 허용 확장자: PDF, JPG, PNG
+    allowed = {'.pdf', '.jpg', '.jpeg', '.png'}
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed:
+        return jsonify(success=False, message='PDF 또는 이미지 파일만 업로드 가능합니다.')
+
+    try:
+        # 저장 경로
+        upload_dir = os.path.join(UPLOAD_FOLDER, str(round_id), 'attachment8')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        # 파일명: attachment8_<가액><확장자>
+        file_name = f'attachment8_{price}{ext}'
+        file_path = os.path.join(upload_dir, file_name)
+
+        # 기존 파일 삭제
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+        # 저장
+        file.save(file_path)
+
+        # DB에 저장
+        db.save_attachment8(round_id, price, file_name, file.filename, file_path)
+
+        return jsonify(success=True, message='업로드 완료', filename=file.filename)
+    except Exception as e:
+        return jsonify(success=False, message=str(e))
+
+
+@app.route('/round/<int:round_id>/step05/delete_attachment8/<int:price>', methods=['POST'])
+def delete_attachment8_route(round_id, price):
+    """발행가액별 붙임8 삭제."""
+    try:
+        attachment = db.get_attachment8(round_id, price)
+        if attachment:
+            # 파일 삭제
+            if os.path.isfile(attachment['file_path']):
+                os.remove(attachment['file_path'])
+            # DB 삭제
+            db.delete_attachment8(round_id, price)
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(success=False, message=str(e))
 
 
 # ── Employee self-submit routes ────────────────────────────────────────────────

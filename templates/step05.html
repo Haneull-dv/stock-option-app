@@ -51,6 +51,35 @@
              style="max-width:120px;">
     </div>
   </div>
+
+  <!-- 대리인 정보 -->
+  <hr style="margin:20px 0;border:none;border-top:1px solid var(--border-color);">
+  <h3 style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--text-secondary);">일괄발행등록 대리인 정보 (붙임2용)</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div class="form-group">
+      <label class="form-label">대리인 성명</label>
+      <input type="text" id="agent-name" class="form-control"
+             value="{{ config.agent_name or '' }}" placeholder="예: 홍길동">
+    </div>
+    <div class="form-group">
+      <label class="form-label">대리인 연락처</label>
+      <input type="text" id="agent-phone" class="form-control"
+             value="{{ config.agent_phone or '' }}" placeholder="예: 010-1234-5678">
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">
+    <div class="form-group">
+      <label class="form-label">대리인 주민등록번호</label>
+      <input type="text" id="agent-rrn" class="form-control"
+             value="{{ config.agent_rrn or '' }}" placeholder="예: 123456-1234567">
+    </div>
+    <div class="form-group">
+      <label class="form-label">대리인 주소</label>
+      <input type="text" id="agent-address" class="form-control"
+             value="{{ config.agent_address or '경기도 성남시 분당구 대왕판교로192번길 12, 3층' }}" placeholder="경기도 성남시 분당구 대왕판교로192번길 12, 3층">
+    </div>
+  </div>
+
   <div style="margin-top:12px;">
     <button class="btn btn-outline btn-sm" onclick="saveConfig()">저장</button>
   </div>
@@ -104,6 +133,20 @@
           {% endfor %}
         </tbody>
       </table>
+    </div>
+
+    <!-- 붙임8 업로드 -->
+    <div style="margin-top:12px;padding:12px;background:#f8f9fa;border-radius:6px;">
+      <strong style="font-size:13px;">붙임8: 주식납입금 보관증명서</strong>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+        {% if price in attachment8_map %}
+        <span style="font-size:12px;color:var(--color-success);">&#10003; {{ attachment8_map[price].original_name }}</span>
+        <button class="btn btn-outline btn-xs" onclick="deleteAttachment8({{ price }})">삭제</button>
+        {% else %}
+        <input type="file" id="attachment8-{{ price }}" accept=".pdf,.jpg,.jpeg,.png" style="font-size:12px;">
+        <button class="btn btn-primary btn-xs" onclick="uploadAttachment8({{ price }})">업로드</button>
+        {% endif %}
+      </div>
     </div>
   </div>
   {% endfor %}
@@ -240,16 +283,15 @@
 <!-- ④ 서류 자동생성 -->
 <div class="section-card">
   <div class="section-card-header">
-    <h2 class="section-card-title">④ 서류 자동생성</h2>
+    <h2 class="section-card-title">④ 발행가액별 신주발행의뢰 폴더 생성</h2>
   </div>
   <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-    행사가액별 폴더를 생성하고, 자동생성 가능한 서류를 만듭니다.<br>
-    <strong>붙임1</strong> 세부내역 XLSX (실명번호는 수동입력 필요) &nbsp;|&nbsp;
-    <strong>붙임6</strong> 신분증 합본 PDF &nbsp;|&nbsp;
-    <strong>붙임7</strong> 계좌사본 합본 PDF
+    발행가액별로 필요한 서류를 자동 생성하고 ZIP 파일로 다운로드합니다.<br>
+    <strong>포함 서류:</strong> (전자등록) HWPX, 발행등록확인신청서 PDF, 법인인감증명서 PDF,
+    붙임1~9 (자동생성 가능 항목)
   </p>
   <button class="btn btn-primary btn-lg" id="generate-btn" onclick="generateDocs()">
-    &#9889; 행사가액별 서류 생성
+    &#9889; 발행가액별 ZIP 생성
   </button>
   <div id="generate-result" style="margin-top:16px;"></div>
 
@@ -260,7 +302,7 @@
       {% for out in outputs %}
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;">
         <span style="font-size:13px;">
-          {{ out.output_filename.split('/')[-1] }}
+          {{ out.output_filename }}
           <span style="color:var(--text-muted);font-size:11px;margin-left:8px;">{{ out.created_at }}</span>
         </span>
         <a href="/round/{{ round.id }}/step05/download/{{ out.output_filename }}"
@@ -284,6 +326,10 @@ async function saveConfig() {
     contact_name:       document.getElementById('contact-name').value.trim(),
     contact_phone:      document.getElementById('contact-phone').value.trim(),
     stock_code:         document.getElementById('stock-code').value.trim(),
+    agent_name:         document.getElementById('agent-name').value.trim(),
+    agent_phone:        document.getElementById('agent-phone').value.trim(),
+    agent_rrn:          document.getElementById('agent-rrn').value.trim(),
+    agent_address:      document.getElementById('agent-address').value.trim(),
   };
   try {
     const res = await apiCall(`/round/${ROUND_ID}/step05/config`, 'POST', payload);
@@ -332,7 +378,51 @@ async function generateDocs() {
     showToast('오류: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = '\u26A1 행사가액별 서류 생성';
+    btn.textContent = '\u26A1 발행가액별 ZIP 생성';
+  }
+}
+
+// ── 붙임8 업로드 ───────────────────────────────────────────
+async function uploadAttachment8(price) {
+  const fileInput = document.getElementById(`attachment8-${price}`);
+  if (!fileInput.files || !fileInput.files[0]) {
+    showToast('파일을 선택하세요', 'error');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+
+  try {
+    const res = await fetch(`/round/${ROUND_ID}/step05/upload_attachment8/${price}`, {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('업로드 완료', 'success');
+      location.reload();
+    } else {
+      showToast(data.message || '업로드 실패', 'error');
+    }
+  } catch (e) {
+    showToast('오류: ' + e.message, 'error');
+  }
+}
+
+async function deleteAttachment8(price) {
+  if (!confirm('붙임8 파일을 삭제하시겠습니까?')) return;
+
+  try {
+    const res = await apiCall(`/round/${ROUND_ID}/step05/delete_attachment8/${price}`, 'POST', {});
+    if (res.success) {
+      showToast('삭제 완료', 'success');
+      location.reload();
+    } else {
+      showToast(res.message || '삭제 실패', 'error');
+    }
+  } catch (e) {
+    showToast('오류: ' + e.message, 'error');
   }
 }
 

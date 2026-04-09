@@ -47,6 +47,9 @@ def init_db():
             account_number TEXT,
             submit_token TEXT UNIQUE,
             doc_submitted INTEGER DEFAULT 0,
+            rrn TEXT,
+            ocr_account TEXT,
+            ocr_extracted_at TEXT,
             created_at TEXT DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
         );
@@ -114,6 +117,10 @@ def init_db():
             contact_name TEXT DEFAULT '정민우',
             contact_phone TEXT DEFAULT '010-3615-4909',
             stock_code TEXT DEFAULT '488280',
+            agent_name TEXT,
+            agent_phone TEXT,
+            agent_rrn TEXT,
+            agent_address TEXT,
             FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
         );
     """)
@@ -527,23 +534,30 @@ def get_issuance_config(round_id):
 
 
 def save_issuance_config(round_id, payment_date, dividend_base_date,
-                         listing_date, contact_name, contact_phone, stock_code):
+                         listing_date, contact_name, contact_phone, stock_code,
+                         agent_name=None, agent_phone=None, agent_rrn=None, agent_address=None):
     conn = get_db()
     conn.execute(
         """INSERT INTO issuance_config
            (round_id, payment_date, dividend_base_date, listing_date,
-            contact_name, contact_phone, stock_code)
-           VALUES (?,?,?,?,?,?,?)
+            contact_name, contact_phone, stock_code,
+            agent_name, agent_phone, agent_rrn, agent_address)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(round_id) DO UPDATE SET
              payment_date=excluded.payment_date,
              dividend_base_date=excluded.dividend_base_date,
              listing_date=excluded.listing_date,
              contact_name=excluded.contact_name,
              contact_phone=excluded.contact_phone,
-             stock_code=excluded.stock_code""",
+             stock_code=excluded.stock_code,
+             agent_name=excluded.agent_name,
+             agent_phone=excluded.agent_phone,
+             agent_rrn=excluded.agent_rrn,
+             agent_address=excluded.agent_address""",
         (round_id, payment_date or '', dividend_base_date or '',
          listing_date or '', contact_name or '정민우',
-         contact_phone or '010-3615-4909', stock_code or '488280')
+         contact_phone or '010-3615-4909', stock_code or '488280',
+         agent_name or '', agent_phone or '', agent_rrn or '', agent_address or '')
     )
     conn.commit()
     conn.close()
@@ -591,3 +605,104 @@ def get_round_stats(round_id):
     ).fetchone()[0]
     conn.close()
     return {'total': total, 'submitted': submitted}
+
+
+# ── OCR helpers ────────────────────────────────────────────────────────────────
+
+def update_applicant_ocr(applicant_id, rrn=None, ocr_account=None, broker=None, force_update=False):
+    """
+    신청자의 OCR 추출 데이터 업데이트.
+
+    force_update=True이면 값이 없어도 ocr_extracted_at를 업데이트 (재시도 방지용)
+    """
+    conn = get_db()
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    updates = []
+    params = []
+
+    if rrn is not None:
+        updates.append("rrn=?")
+        params.append(rrn)
+
+    if ocr_account is not None:
+        updates.append("ocr_account=?")
+        params.append(ocr_account)
+
+    if broker is not None:
+        updates.append("broker=?")
+        params.append(broker)
+
+    # force_update이거나 실제 업데이트할 값이 있으면 타임스탬프 업데이트
+    if updates or force_update:
+        updates.append("ocr_extracted_at=?")
+        params.append(now)
+        params.append(applicant_id)
+
+        sql = f"UPDATE applicants SET {', '.join(updates)} WHERE id=?"
+        conn.execute(sql, params)
+        conn.commit()
+
+    conn.close()
+
+
+def get_applicant_ocr(applicant_id):
+    """신청자의 OCR 데이터 조회."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT rrn, ocr_account, ocr_extracted_at FROM applicants WHERE id=?",
+        (applicant_id,)
+    ).fetchone()
+    conn.close()
+    if row:
+        return {'rrn': row[0], 'ocr_account': row[1], 'ocr_extracted_at': row[2]}
+    return {}
+
+
+# ── Attachment8 (주식납입금 보관증명서) helpers ────────────────────────────────
+
+def save_attachment8(round_id, exercise_price, file_name, original_name, file_path):
+    """발행가액별 붙임8 파일 저장."""
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO attachment8
+        (round_id, exercise_price, file_name, original_name, file_path)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(round_id, exercise_price) DO UPDATE SET
+          file_name=excluded.file_name,
+          original_name=excluded.original_name,
+          file_path=excluded.file_path,
+          uploaded_at=datetime('now', 'localtime')
+    """, (round_id, exercise_price, file_name, original_name, file_path))
+    conn.commit()
+    conn.close()
+
+
+def get_attachment8(round_id, exercise_price):
+    """특정 발행가액의 붙임8 파일 조회."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM attachment8 WHERE round_id=? AND exercise_price=?",
+        (round_id, exercise_price)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_attachment8(round_id):
+    """해당 회차의 모든 붙임8 파일 조회 (exercise_price를 키로 하는 딕셔너리)."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM attachment8 WHERE round_id=? ORDER BY exercise_price",
+        (round_id,)
+    ).fetchall()
+    conn.close()
+    return {r['exercise_price']: dict(r) for r in rows}
+
+
+def delete_attachment8(round_id, exercise_price):
+    """특정 발행가액의 붙임8 파일 삭제."""
+    conn = get_db()
+    conn.execute("DELETE FROM attachment8 WHERE round_id=? AND exercise_price=?", (round_id, exercise_price))
+    conn.commit()
+    conn.close()
