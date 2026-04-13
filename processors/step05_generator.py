@@ -285,6 +285,39 @@ def _generate_electronic_registration(work_dir, price, applicants, config, round
     return output
 
 
+def _replace_paragraph_text(paragraph, new_text):
+    """
+    paragraph의 텍스트를 new_text로 교체하되 첫 번째 run의 서식을 유지.
+    """
+    # 첫 번째 run의 스타일 저장
+    if paragraph.runs:
+        first_run = paragraph.runs[0]
+        font = first_run.font
+        bold = font.bold
+        italic = font.italic
+        size = font.size
+        name = font.name
+    else:
+        bold = italic = size = name = None
+
+    # 모든 runs를 완전히 제거
+    for _ in range(len(paragraph.runs)):
+        paragraph._element.remove(paragraph.runs[0]._element)
+
+    # 새 run 추가
+    new_run = paragraph.add_run(new_text)
+
+    # 스타일 복원
+    if bold is not None:
+        new_run.font.bold = bold
+    if italic is not None:
+        new_run.font.italic = italic
+    if size is not None:
+        new_run.font.size = size
+    if name is not None:
+        new_run.font.name = name
+
+
 def _generate_registration_confirmation(work_dir, price, applicants, config, round_obj):
     """발행등록확인신청서 DOCX → PDF 생성."""
     from docx import Document
@@ -298,6 +331,14 @@ def _generate_registration_confirmation(work_dir, price, applicants, config, rou
     payment_date_raw = config.get('payment_date', '')
     listing_date_raw = config.get('listing_date', '')
     total_shares = sum(ap.get('quantity', 0) for ap in applicants)
+
+    # 발행가액별 회차 번호 매핑 (고정)
+    price_to_round_number = {
+        1250: 15,
+        2000: 16,
+        4130: 17
+    }
+    round_number = price_to_round_number.get(price, '')
 
     # 날짜 형식 변환: 2026-02-23 → 2026년 02월 23일
     def format_korean_date(date_str):
@@ -314,29 +355,34 @@ def _generate_registration_confirmation(work_dir, price, applicants, config, rou
     # DOCX 열기
     doc = Document(template)
 
-    # 모든 단락 텍스트 치환
+    # 모든 단락 텍스트 치환 (runs 기반으로 서식 유지)
     for paragraph in doc.paragraphs:
-        text = paragraph.text
+        full_text = paragraph.text
 
         # "2. 기 준 일 : 2026년 02월 23일" 형태 치환
-        if '기 준 일' in text or '기준일' in text:
-            # 기존 날짜 부분 찾아서 치환
-            text = re.sub(r'(\d{4}년\s*\d{2}월\s*\d{2}일)', payment_date_kr or '', text)
-            paragraph.text = text
+        if '기 준 일' in full_text or '기준일' in full_text:
+            new_text = re.sub(r'(\d{4}년\s*\d{2}월\s*\d{2}일)', payment_date_kr or '', full_text)
+            _replace_paragraph_text(paragraph, new_text)
+
+        # "3. 발행횟수 : 제 회" 형태 치환
+        if '발행횟수' in full_text and round_number:
+            new_text = re.sub(r'제\s*\d*\s*회', f'제 {round_number}회', full_text)
+            _replace_paragraph_text(paragraph, new_text)
 
         # "4. 발행주식수 : 10,500주" 형태 치환
-        if '발행주식수' in text:
-            text = re.sub(r'(발행주식수\s*:\s*)[\d,]+주', r'\1' + f'{total_shares:,}주', text)
-            paragraph.text = text
+        if '발행주식수' in full_text:
+            new_text = re.sub(r'발행주식수\s*:\s*[\d,]+주', f'발행주식수 : {total_shares:,}주', full_text)
+            _replace_paragraph_text(paragraph, new_text)
 
         # "5. 유통(상장)예정일 : 2026년 월 일" 형태 치환
-        if '유통' in text and '예정일' in text:
-            text = re.sub(r'(\d{4}년\s*\d*월\s*\d*일)', listing_date_kr or '', text)
-            paragraph.text = text
+        if '유통' in full_text and '예정일' in full_text:
+            new_text = re.sub(r'(\d{4}년\s*\d*월\s*\d*일)', listing_date_kr or '', full_text)
+            _replace_paragraph_text(paragraph, new_text)
 
     doc.save(temp_docx)
 
     print(f"        · 기준일: {payment_date_kr or '(빈칸)'}")
+    print(f"        · 발행횟수: 제 {round_number}회" if round_number else "        · 발행횟수: (매핑 없음)")
     print(f"        · 발행주식수: {total_shares:,}주")
     print(f"        · 유통예정일: {listing_date_kr or '(빈칸)'}")
 
@@ -421,8 +467,9 @@ def _copy_attachment5(price_folder, price):
 
 
 def _merge_id_copies(price_folder, applicants, price):
-    """붙임6: 배정자 실명확인증표 (신분증 합본)."""
+    """붙임6: 배정자 실명확인증표 (신분증 합본, 앞면만)."""
     import database as db
+    from processors.id_filter import filter_front_pages_only
 
     ap_ids = [ap['id'] for ap in applicants]
     id_docs = db.get_documents_for_applicant_ids(ap_ids, 'id_copy')
@@ -430,12 +477,24 @@ def _merge_id_copies(price_folder, applicants, price):
     if not id_docs:
         raise ValueError("신분증 파일이 없습니다")
 
-    file_paths = [d['file_path'] for d in id_docs if os.path.isfile(d.get('file_path', ''))]
-    if not file_paths:
-        raise ValueError("신분증 파일을 찾을 수 없습니다")
+    # 앞면만 필터링
+    filtered_paths = []
+    for doc in id_docs:
+        fp = doc.get('file_path', '')
+        if not os.path.isfile(fp):
+            continue
+
+        applicant_name = doc.get('name', '')
+        filtered_path = filter_front_pages_only(fp, applicant_name)
+
+        if filtered_path:
+            filtered_paths.append(filtered_path)
+
+    if not filtered_paths:
+        raise ValueError("신분증 앞면 파일을 찾을 수 없습니다")
 
     output = os.path.join(price_folder, f'(붙임6) 배정자_실명확인증표_{price}원.pdf')
-    merge_pdfs_in_order(file_paths, output)
+    merge_pdfs_in_order(filtered_paths, output)
     return output
 
 
@@ -460,7 +519,7 @@ def _merge_account_copies(price_folder, applicants, price):
 
 def _copy_attachment9(price_folder):
     """붙임9: 법인등기부등본 복사."""
-    src = os.path.join(TEMPLATES_DIR, 'reference_docs', '(붙임9) 법인등기부등본_에스투더블유 260304.pdf')
+    src = os.path.join(TEMPLATES_DIR, 'reference_docs', '(붙임9) 법인등기부등본_에스투더블유 260408.pdf')
     dest = os.path.join(price_folder, '(붙임9) 법인등기부등본.pdf')
     shutil.copy2(src, dest)
     return dest
