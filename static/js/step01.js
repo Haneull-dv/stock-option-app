@@ -706,6 +706,96 @@ function escHtml(str) {
 }
 
 // ══════════════════════════════════════════════════════
+// 서류 관리 (조회 및 삭제)
+// ══════════════════════════════════════════════════════
+
+async function openDocumentManager(applicantId, docType, applicantName) {
+  const docLabels = {
+    application: '신청서',
+    id_copy: '신분증사본',
+    account_copy: '계좌사본'
+  };
+
+  const docLabel = docLabels[docType] || docType;
+  const infoEl = document.getElementById('doc-manager-info');
+  const listEl = document.getElementById('doc-manager-list');
+
+  infoEl.textContent = `${applicantName}님의 ${docLabel}`;
+  listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">로딩 중...</div>';
+
+  openModal('서류 관리', 'document-manager');
+
+  // 서류 목록 조회
+  try {
+    const res = await apiCall(`/round/${ROUND_ID}/applicant/${applicantId}/documents`, 'GET');
+    if (!res.success) {
+      listEl.innerHTML = `<div style="text-align:center;padding:20px;color:#d32f2f;">${res.message || '조회 실패'}</div>`;
+      return;
+    }
+
+    const docs = res.documents.filter(d => d.doc_type === docType);
+
+    if (docs.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">업로드된 서류가 없습니다</div>';
+      return;
+    }
+
+    // 서류 목록 렌더링
+    listEl.innerHTML = '';
+    docs.forEach(doc => {
+      const item = document.createElement('div');
+      item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid #ddd;border-radius:4px;margin-bottom:8px;background:#fafafa;';
+
+      const nameDiv = document.createElement('div');
+      nameDiv.style.cssText = 'flex:1;font-size:14px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      nameDiv.textContent = doc.original_filename || doc.filename;
+      nameDiv.title = doc.original_filename || doc.filename;
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger btn-xs';
+      deleteBtn.textContent = '삭제';
+      deleteBtn.style.marginLeft = '12px';
+      deleteBtn.onclick = async () => {
+        if (!confirm(`"${doc.original_filename || doc.filename}"을(를) 삭제하시겠습니까?`)) return;
+
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = '삭제 중...';
+
+        try {
+          const delRes = await apiCall(`/round/${ROUND_ID}/document/${doc.id}`, 'DELETE');
+          if (delRes.success) {
+            item.remove();
+            // 서류 상태 업데이트
+            updateDocStatus(applicantId, docType, docs.length > 1);
+            showToast('서류가 삭제되었습니다', 'success');
+
+            // 목록이 비었으면 안내 메시지 표시
+            if (listEl.children.length === 0) {
+              listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">업로드된 서류가 없습니다</div>';
+            }
+          } else {
+            showToast(delRes.message || '삭제 실패', 'error');
+            deleteBtn.disabled = false;
+            deleteBtn.textContent = '삭제';
+          }
+        } catch (e) {
+          showToast('삭제 오류: ' + e.message, 'error');
+          deleteBtn.disabled = false;
+          deleteBtn.textContent = '삭제';
+        }
+      };
+
+      item.appendChild(nameDiv);
+      item.appendChild(deleteBtn);
+      listEl.appendChild(item);
+    });
+
+  } catch (e) {
+    listEl.innerHTML = `<div style="text-align:center;padding:20px;color:#d32f2f;">조회 오류: ${e.message}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════
 // Init on DOM ready
 // ══════════════════════════════════════════════════════
 

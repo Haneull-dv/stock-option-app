@@ -453,6 +453,50 @@ def upload_single(round_id, applicant_id, doc_type):
     )
 
 
+@app.route('/round/<int:round_id>/applicant/<int:applicant_id>/documents', methods=['GET'])
+def get_applicant_documents(round_id, applicant_id):
+    """특정 신청자의 모든 서류 목록 조회"""
+    ap = db.get_applicant(applicant_id)
+    if not ap or ap['round_id'] != round_id:
+        return jsonify(success=False, message='신청자를 찾을 수 없습니다.'), 404
+
+    docs = db.get_documents(applicant_id)
+    return jsonify(success=True, documents=docs)
+
+
+@app.route('/round/<int:round_id>/document/<int:doc_id>', methods=['DELETE'])
+def delete_document(round_id, doc_id):
+    """서류 삭제 (파일 + DB)"""
+    conn = db.get_db()
+    row = conn.execute(
+        """SELECT d.*, a.round_id
+           FROM documents d
+           JOIN applicants a ON d.applicant_id = a.id
+           WHERE d.id=?""",
+        (doc_id,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify(success=False, message='서류를 찾을 수 없습니다.'), 404
+
+    if row['round_id'] != round_id:
+        return jsonify(success=False, message='잘못된 요청입니다.'), 400
+
+    # 실제 파일 삭제
+    file_path = row['file_path']
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            print(f"파일 삭제 실패: {file_path}, {e}")
+
+    # DB에서 삭제
+    db.delete_document(doc_id)
+
+    return jsonify(success=True, message='서류가 삭제되었습니다.')
+
+
 @app.route('/round/<int:round_id>/upload/bulk', methods=['POST'])
 def upload_bulk(round_id):
     """Bulk upload: files + optional doc_type or auto-detect from filename."""
