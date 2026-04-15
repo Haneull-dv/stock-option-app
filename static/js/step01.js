@@ -322,9 +322,10 @@ function processFiles(files, docType) {
   if (!files || files.length === 0) return;
 
   const listEl = document.getElementById('files-' + docType);
-  Array.from(files).forEach(file => {
+  Array.from(files).forEach(async file => {
     const item = { file, docType, status: 'pending', matchedId: null, matchedName: null };
-    // Auto-match
+
+    // 1단계: 파일명으로 자동 매칭
     const names = getApplicantNames();
     for (const [id, name] of Object.entries(names)) {
       if (file.name.includes(name)) {
@@ -333,9 +334,63 @@ function processFiles(files, docType) {
         break;
       }
     }
-    pendingUploads[docType].push(item);
-    renderFileItem(listEl, item, docType);
+
+    // 2단계: 파일명 매칭 실패 && PDF 파일이면 → 내용에서 이름 추출
+    if (!item.matchedId && file.type === 'application/pdf' && docType === 'application') {
+      item.extracting = true;  // 추출 중 표시용
+      pendingUploads[docType].push(item);
+      const div = renderFileItem(listEl, item, docType);
+
+      // PDF 내용에서 이름 추출
+      const extracted = await extractNameFromPDF(file);
+      item.extracting = false;
+
+      if (extracted && extracted.success) {
+        item.matchedId = extracted.matched_id;
+        item.matchedName = extracted.matched_name;
+        item.extractedName = extracted.extracted_name;
+
+        // UI 업데이트
+        const select = div.querySelector('[data-file-item]');
+        if (select) select.value = extracted.matched_id;
+
+        const statusSpan = div.querySelector('.file-list-item-status');
+        if (statusSpan) {
+          statusSpan.textContent = `자동매칭: ${extracted.matched_name}`;
+          statusSpan.className = 'file-list-item-status success';
+        }
+
+        // 자동 업로드
+        const uploadBtn = div.querySelector('.upload-btn');
+        if (uploadBtn) uploadBtn.click();
+      } else {
+        // 추출 실패 - 수동 선택 필요
+        const statusSpan = div.querySelector('.file-list-item-status');
+        if (statusSpan) {
+          statusSpan.textContent = extracted?.message || '수동 선택 필요';
+          statusSpan.className = 'file-list-item-status pending';
+        }
+      }
+    } else {
+      pendingUploads[docType].push(item);
+      renderFileItem(listEl, item, docType);
+    }
   });
+}
+
+async function extractNameFromPDF(file) {
+  /**
+   * PDF에서 이름 추출 API 호출
+   */
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await apiCall(`/round/${ROUND_ID}/extract_name_from_pdf`, 'POST', fd);
+    return res;
+  } catch (e) {
+    console.error('PDF 이름 추출 오류:', e);
+    return { success: false, message: e.message };
+  }
 }
 
 function getApplicantNames() {
@@ -363,11 +418,14 @@ function renderFileItem(listEl, item, docType) {
   }
   assignSelect += `</select>`;
 
+  const statusText = item.extracting ? '이름 추출 중...' : '대기';
+  const statusClass = item.extracting ? 'file-list-item-status extracting' : 'file-list-item-status pending';
+
   div.innerHTML = `
     <div class="file-list-item-name" title="${escHtml(item.file.name)}">${escHtml(item.file.name)}</div>
     ${assignSelect}
     <button class="btn btn-primary btn-xs upload-btn">업로드</button>
-    <span class="file-list-item-status pending" id="status-${item.file.name.replace(/[^a-zA-Z0-9]/g,'_')}">대기</span>
+    <span class="${statusClass}" id="status-${item.file.name.replace(/[^a-zA-Z0-9]/g,'_')}">${statusText}</span>
   `;
 
   const uploadBtn = div.querySelector('.upload-btn');
@@ -411,10 +469,12 @@ function renderFileItem(listEl, item, docType) {
 
   listEl.appendChild(div);
 
-  // If matched, auto-upload
-  if (item.matchedId) {
+  // If matched, auto-upload (extracting 중이 아닐 때만)
+  if (item.matchedId && !item.extracting) {
     uploadBtn.click();
   }
+
+  return div;  // processFiles에서 사용하기 위해 반환
 }
 
 // ══════════════════════════════════════════════════════
@@ -703,6 +763,36 @@ function escHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ══════════════════════════════════════════════════════
+// 결과물 삭제
+// ══════════════════════════════════════════════════════
+
+async function deleteOutput(outputId, filename) {
+  if (!confirm(`"${filename}"을(를) 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+  try {
+    const res = await apiCall(`/round/${ROUND_ID}/output/${outputId}`, 'DELETE');
+    if (res.success) {
+      // UI에서 제거
+      const item = document.querySelector(`.download-item[data-output-id="${outputId}"]`);
+      if (item) item.remove();
+
+      // 목록이 비었으면 전체 섹션 숨김
+      const list = document.getElementById('output-list');
+      if (list && list.children.length === 0) {
+        const results = document.getElementById('merge-results');
+        if (results) results.innerHTML = '';
+      }
+
+      showToast('결과물이 삭제되었습니다', 'success');
+    } else {
+      showToast(res.message || '삭제 실패', 'error');
+    }
+  } catch (e) {
+    showToast('삭제 오류: ' + e.message, 'error');
+  }
 }
 
 // ══════════════════════════════════════════════════════

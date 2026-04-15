@@ -6,3 +6,4 @@ pillow
 pywin32
 easyocr
 docx2pdf
+pymupdf

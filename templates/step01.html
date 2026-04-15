@@ -270,13 +270,18 @@
   <div id="merge-results" class="merge-results">
     {% if outputs %}
     <h3 class="merge-results-title">이전 결과물</h3>
-    <div class="download-list">
+    <div class="download-list" id="output-list">
       {% for out in outputs %}
-      <div class="download-item">
+      <div class="download-item" data-output-id="{{ out.id }}">
         <div class="download-item-name">{{ out.output_filename }}</div>
-        <a href="/round/{{ round.id }}/download/{{ out.output_filename }}" class="btn btn-success btn-sm">
-          &#11123; 다운로드
-        </a>
+        <div style="display:flex;gap:8px;">
+          <a href="/round/{{ round.id }}/download/{{ out.output_filename }}" class="btn btn-success btn-sm">
+            &#11123; 다운로드
+          </a>
+          <button class="btn btn-danger btn-sm" onclick="deleteOutput({{ out.id }}, '{{ out.output_filename }}')">
+            삭제
+          </button>
+        </div>
       </div>
       {% endfor %}
     </div>

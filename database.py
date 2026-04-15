@@ -385,6 +385,14 @@ def get_step_outputs(round_id, step=None):
     return [dict(r) for r in rows]
 
 
+def delete_step_output(output_id):
+    """결과물 삭제 (DB에서만, 파일 삭제는 app.py에서)"""
+    conn = get_db()
+    conn.execute("DELETE FROM step_outputs WHERE id=?", (output_id,))
+    conn.commit()
+    conn.close()
+
+
 # ── Submission status helper ───────────────────────────────────────────────────
 
 def get_submission_status(round_id):

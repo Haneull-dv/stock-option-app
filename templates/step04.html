@@ -6,335 +6,89 @@
   <div>
     <a href="/round/{{ round.id }}" class="breadcrumb">&larr; {{ round.name }}</a>
     <h1 class="page-title">STEP 04 &mdash; 등기신청</h1>
-    <p class="page-subtitle">신주발행에 따른 자본금 변동 집계 및 법원 등기 신청 서류 준비</p>
+    <p class="page-subtitle">법원 등기신청 서류 준비</p>
   </div>
 </div>
 
-<!-- ① 기본 정보 설정 -->
+<!-- ═══════════════════════════════════════════════════════
+     Section 1: 신청자 현황
+══════════════════════════════════════════════════════════ -->
 <div class="section-card">
   <div class="section-card-header">
-    <h2 class="section-card-title">① 등기 기본 정보</h2>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-    <div class="form-group">
-      <label class="form-label">회사명</label>
-      <input type="text" id="company-name" class="form-control"
-             value="{{ config.company_name or 'S2W Inc.' }}"
-             placeholder="S2W Inc.">
-    </div>
-    <div class="form-group">
-      <label class="form-label">법인등록번호</label>
-      <input type="text" id="company-reg-num" class="form-control"
-             value="{{ config.company_reg_num or '' }}"
-             placeholder="000000-0000000">
-    </div>
-    <div class="form-group">
-      <label class="form-label required">신주발행일</label>
-      <input type="date" id="issue-date" class="form-control"
-             value="{{ config.issue_date or (round.exercise_date | replace('.', '-') if round.exercise_date else '') }}"
-             style="max-width:200px;">
-      <span style="font-size:12px;color:var(--text-muted);">보통 행사일과 동일</span>
-    </div>
-    <div class="form-group">
-      <label class="form-label">등기신청일</label>
-      <input type="date" id="reg-date" class="form-control"
-             value="{{ config.reg_date or '' }}"
-             style="max-width:200px;">
-    </div>
-    <div class="form-group">
-      <label class="form-label required">액면가 (원)</label>
-      <input type="number" id="par-value" class="form-control"
-             value="{{ config.par_value or 500 }}"
-             style="max-width:160px;" placeholder="500">
-    </div>
+    <h2 class="section-card-title">1. 신청자 현황</h2>
   </div>
 
-  <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
-    <p style="font-size:13px;font-weight:600;margin-bottom:12px;">변경 전 자본금 정보</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div class="form-group">
-        <label class="form-label">변경 전 주식 총수 (주)</label>
-        <input type="number" id="shares-before" class="form-control"
-               value="{{ config.shares_before or '' }}"
-               placeholder="예: 10000000" style="max-width:220px;">
-      </div>
-      <div class="form-group">
-        <label class="form-label">변경 전 자본금 (원)</label>
-        <input type="number" id="capital-before" class="form-control"
-               value="{{ config.capital_before or '' }}"
-               placeholder="예: 5000000000" style="max-width:220px;">
-      </div>
-    </div>
-  </div>
-  <div style="margin-top:12px;">
-    <button class="btn btn-outline btn-sm" onclick="saveConfig()">저장</button>
-  </div>
-</div>
-
-<!-- ② 자본금 변동 미리보기 -->
-<div class="section-card">
-  <div class="section-card-header">
-    <h2 class="section-card-title">② 자본금 변동 내역</h2>
-  </div>
-
-  <!-- 행사내역 집계 -->
-  <p style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-muted);">행사가액별 집계</p>
-  <div class="table-responsive" style="margin-bottom:20px;">
+  <div class="table-responsive">
     <table class="data-table">
       <thead>
         <tr>
+          <th>순서</th>
+          <th>이름</th>
           <th>행사가액 (원)</th>
-          <th class="col-center">신청자 수</th>
-          <th class="col-center">수량 (주)</th>
-          <th class="col-center">납입금액 (원)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for price in prices %}
-        {% set info = price_summary[price] %}
-        <tr>
-          <td><strong>{{ '{:,}'.format(price) }}원</strong></td>
-          <td class="col-center">{{ info.count }}명</td>
-          <td class="col-center">{{ '{:,}'.format(info.qty) }}주</td>
-          <td class="col-center">{{ '{:,}'.format(info.amount) }}원</td>
-        </tr>
-        {% endfor %}
-        {% if not prices %}
-        <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">신청자 데이터가 없습니다.</td></tr>
-        {% endif %}
-        <tr style="background:#f0f4f8;font-weight:700;">
-          <td>합계</td>
-          <td class="col-center">{{ applicants|length }}명</td>
-          <td class="col-center">{{ '{:,}'.format(total_qty) }}주</td>
-          <td class="col-center">{{ '{:,}'.format(total_amount) }}원</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- 자본금 변동 -->
-  <p style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-muted);">자본금 변동</p>
-  <div class="table-responsive">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th></th>
-          <th class="col-center" colspan="2">변경 전</th>
-          <th class="col-center" colspan="2">증가</th>
-          <th class="col-center" colspan="2">변경 후</th>
-        </tr>
-        <tr>
-          <th>구분</th>
-          <th class="col-center">주식 수 (주)</th>
-          <th class="col-center">자본금 (원)</th>
-          <th class="col-center">주식 수 (주)</th>
-          <th class="col-center">자본금 (원)</th>
-          <th class="col-center">주식 수 (주)</th>
-          <th class="col-center">자본금 (원)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>보통주</strong></td>
-          <td class="col-center" id="disp-shares-before">
-            {% if shares_before %}{{ '{:,}'.format(shares_before) }}{% else %}<span style="color:var(--text-muted);">-</span>{% endif %}
-          </td>
-          <td class="col-center" id="disp-capital-before">
-            {% if capital_before %}{{ '{:,}'.format(capital_before) }}{% else %}<span style="color:var(--text-muted);">-</span>{% endif %}
-          </td>
-          <td class="col-center" style="color:var(--color-success);font-weight:700;">
-            +{{ '{:,}'.format(total_qty) }}
-          </td>
-          <td class="col-center" style="color:var(--color-success);font-weight:700;">
-            +{{ '{:,}'.format(total_qty * par_value) }}
-          </td>
-          <td class="col-center" id="disp-shares-after"
-              style="background:#f0f7f0;font-weight:700;">
-            {% if shares_before %}{{ '{:,}'.format(shares_after) }}{% else %}<span style="color:var(--text-muted);">-</span>{% endif %}
-          </td>
-          <td class="col-center" id="disp-capital-after"
-              style="background:#f0f7f0;font-weight:700;">
-            {% if capital_before %}{{ '{:,}'.format(capital_after) }}{% else %}<span style="color:var(--text-muted);">-</span>{% endif %}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-  {% if not config.capital_before %}
-  <p style="font-size:12px;color:var(--color-warning);margin-top:8px;">
-    ⚠ 변경 전 자본금 정보를 입력하면 변경 후 수치가 자동 계산됩니다.
-  </p>
-  {% endif %}
-</div>
-
-<!-- ③ 신주 발행 내역 -->
-<div class="section-card">
-  <div class="section-card-header">
-    <h2 class="section-card-title">③ 신주 발행 내역 (행사자별)</h2>
-  </div>
-  <div class="table-responsive">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th class="col-center">No.</th>
-          <th>성명</th>
-          <th class="col-center">행사가액 (원)</th>
-          <th class="col-center">수량 (주)</th>
-          <th class="col-center">납입금액 (원)</th>
-          <th>계좌번호</th>
-          <th>증권사</th>
+          <th>수량 (주)</th>
         </tr>
       </thead>
       <tbody>
         {% for ap in applicants %}
         <tr>
-          <td class="col-center">{{ loop.index }}</td>
+          <td>{{ ap.sort_order }}</td>
           <td>{{ ap.name }}</td>
-          <td class="col-center">{{ '{:,}'.format(ap.exercise_price) if ap.exercise_price else '-' }}</td>
-          <td class="col-center">{{ '{:,}'.format(ap.quantity) if ap.quantity else '-' }}</td>
-          <td class="col-center">
-            {% if ap.exercise_price and ap.quantity %}
-            {{ '{:,}'.format(ap.exercise_price * ap.quantity) }}
-            {% else %}-{% endif %}
-          </td>
-          <td>{{ ap.account_number or '-' }}</td>
-          <td>{{ ap.broker or '-' }}</td>
+          <td>{{ '{:,}'.format(ap.exercise_price) if ap.exercise_price else '-' }}</td>
+          <td>{{ '{:,}'.format(ap.quantity) if ap.quantity else '-' }}</td>
         </tr>
         {% else %}
-        <tr>
-          <td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">
-            신청자 데이터가 없습니다. Step 01에서 신청자를 먼저 등록하세요.
-          </td>
-        </tr>
+        <tr><td colspan="4" class="empty-table-cell">신청자가 없습니다</td></tr>
         {% endfor %}
-        {% if applicants %}
-        <tr style="background:#f0f4f8;font-weight:700;">
-          <td class="col-center">-</td>
-          <td>합계</td>
-          <td class="col-center">-</td>
-          <td class="col-center">{{ '{:,}'.format(total_qty) }}주</td>
-          <td class="col-center">{{ '{:,}'.format(total_amount) }}원</td>
-          <td>-</td>
-          <td>-</td>
-        </tr>
-        {% endif %}
       </tbody>
     </table>
   </div>
-  <div style="margin-top:8px;font-size:13px;color:var(--text-muted);">
-    총 <strong>{{ applicants|length }}</strong>명 &nbsp;|&nbsp;
-    신주 합계 <strong>{{ '{:,}'.format(total_qty) }}</strong>주
+
+  <div style="margin-top:16px;padding:12px;background:#f5f5f5;border-radius:4px;">
+    <div style="font-weight:600;margin-bottom:8px;">요약</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">
+      <div>
+        <span style="color:#666;font-size:13px;">총 신청자</span>
+        <div style="font-size:18px;font-weight:700;color:#1976d2;">{{ applicants|length }}명</div>
+      </div>
+      <div>
+        <span style="color:#666;font-size:13px;">총 행사주식수</span>
+        <div style="font-size:18px;font-weight:700;color:#1976d2;">{{ '{:,}'.format(total_shares) }}주</div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- ④ 등기신청 구비서류 체크리스트 -->
+<!-- ═══════════════════════════════════════════════════════
+     Section 2: 서류 생성
+══════════════════════════════════════════════════════════ -->
 <div class="section-card">
   <div class="section-card-header">
-    <h2 class="section-card-title">④ 등기신청 구비서류 체크리스트</h2>
+    <h2 class="section-card-title">2. 서류 생성</h2>
   </div>
-  <div class="table-responsive">
-    <table class="data-table" id="checklist-table">
-      <thead>
-        <tr>
-          <th style="width:36px;text-align:center;">
-            <input type="checkbox" id="chk-all-docs" onchange="toggleAllDocs(this)">
-          </th>
-          <th class="col-center" style="width:48px;">No.</th>
-          <th>서류명</th>
-          <th>비고</th>
-          <th class="col-center" style="width:60px;">완료</th>
-        </tr>
-      </thead>
-      <tbody id="checklist-tbody">
-        <tr>
-          <td style="text-align:center;"><input type="checkbox" class="doc-chk" onchange="onDocCheck()"></td>
-          <td class="col-center">1</td>
-          <td>신주인수청구서 <strong>원본</strong></td>
-          <td style="color:var(--text-muted);">행사자 도장 날인(싸인 불가) — 인감증명서 불필요, 각1부</td>
-          <td class="col-center">☐</td>
-        </tr>
-        <tr>
-          <td style="text-align:center;"><input type="checkbox" class="doc-chk" onchange="onDocCheck()"></td>
-          <td class="col-center">2</td>
-          <td>행사가액조정내역서<br><span style="font-size:12px;color:var(--text-muted);">(행사가액이 조정되었을 경우)</span></td>
-          <td style="color:var(--text-muted);">법인인감 날인, 1부</td>
-          <td class="col-center">☐</td>
-        </tr>
-        <tr>
-          <td style="text-align:center;"><input type="checkbox" class="doc-chk" onchange="onDocCheck()"></td>
-          <td class="col-center">3</td>
-          <td>주식매수선택권부여계약서 <strong>사본</strong></td>
-          <td style="color:var(--text-muted);">맨 앞장 원본대조필 후 법인인감 날인 및 접어서 각장 간인, 1부</td>
-          <td class="col-center">☐</td>
-        </tr>
-        <tr>
-          <td style="text-align:center;"><input type="checkbox" class="doc-chk" onchange="onDocCheck()"></td>
-          <td class="col-center">4</td>
-          <td>주주총회의사록 사본<br><span style="font-size:12px;color:var(--text-muted);">(스톡옵션 부여 당시)</span></td>
-          <td style="color:var(--text-muted);">맨 앞장 원본대조필 후 법인인감 날인 및 접어서 각장 간인, 1부</td>
-          <td class="col-center">☐</td>
-        </tr>
-        <tr>
-          <td style="text-align:center;"><input type="checkbox" class="doc-chk" onchange="onDocCheck()"></td>
-          <td class="col-center">5</td>
-          <td>정관</td>
-          <td style="color:var(--text-muted);">맨 앞장 원본대조필 후 법인인감 날인 및 접어서 각장 간인, 1부</td>
-          <td class="col-center">☐</td>
-        </tr>
-        <tr>
-          <td style="text-align:center;"><input type="checkbox" class="doc-chk" onchange="onDocCheck()"></td>
-          <td class="col-center">6</td>
-          <td>주금납입보관증명서 <strong>원본</strong></td>
-          <td style="color:var(--text-muted);">1부</td>
-          <td class="col-center">☐</td>
-        </tr>
-        <tr>
-          <td style="text-align:center;"><input type="checkbox" class="doc-chk" onchange="onDocCheck()"></td>
-          <td class="col-center">7</td>
-          <td>등기위임장</td>
-          <td style="color:var(--text-muted);">법인인감 날인, 1부</td>
-          <td class="col-center">☐</td>
-        </tr>
-        <tr>
-          <td style="text-align:center;"><input type="checkbox" class="doc-chk" onchange="onDocCheck()"></td>
-          <td class="col-center">8</td>
-          <td>법인인감증명서 <strong>사본</strong></td>
-          <td style="color:var(--text-muted);">1부</td>
-          <td class="col-center">☐</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-  <div style="margin-top:8px;font-size:13px;color:var(--text-muted);">
-    완료: <strong id="doc-done-count">0</strong> / 8
-  </div>
-</div>
 
-<!-- ⑤ 서류 생성 -->
-<div class="section-card">
-  <div class="section-card-header">
-    <h2 class="section-card-title">⑤ 집계표 생성</h2>
+  <div style="margin-bottom:20px;">
+    <button class="btn btn-primary btn-lg" id="generate-btn" onclick="generateDocuments()">
+      &#128196; 등기신청 서류 생성
+    </button>
   </div>
-  <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-    자본금 변동 내역, 신주 발행 내역, 구비서류 체크리스트가 포함된 등기신청 집계표를 엑셀로 생성합니다.
-  </p>
-  <button class="btn btn-primary btn-lg" id="generate-btn" onclick="generateDocs()">
-    &#9889; 등기신청 집계표 생성 (.xlsx)
-  </button>
-  <div id="generate-result" style="margin-top:16px;"></div>
+
+  <div id="generation-results" style="margin-top:20px;"></div>
 
   {% if outputs %}
-  <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
-    <p style="font-size:13px;font-weight:600;margin-bottom:8px;">생성 이력</p>
-    <div style="display:flex;flex-direction:column;gap:8px;">
+  <div style="margin-top:24px;">
+    <h3 class="merge-results-title">이전 결과물</h3>
+    <div class="download-list" id="output-list">
       {% for out in outputs %}
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;">
-        <span style="font-size:13px;">
-          📄 등기신청집계표.xlsx
-          <span style="color:var(--text-muted);font-size:11px;margin-left:8px;">{{ out.created_at }}</span>
-        </span>
-        <a href="/round/{{ round.id }}/step04/download/{{ out.output_filename }}"
-           class="btn btn-outline btn-xs">다운로드</a>
+      <div class="download-item" data-output-id="{{ out.id }}">
+        <div class="download-item-name">{{ out.output_filename }}</div>
+        <div style="display:flex;gap:8px;">
+          <a href="/round/{{ round.id }}/download_step04/{{ out.output_filename }}" class="btn btn-success btn-sm">
+            &#11123; 다운로드
+          </a>
+          <button class="btn btn-danger btn-sm" onclick="deleteOutput({{ out.id }}, '{{ out.output_filename }}')">
+            삭제
+          </button>
+        </div>
       </div>
       {% endfor %}
     </div>
@@ -343,123 +97,96 @@
 </div>
 
 <script>
-const ROUND_ID = {{ round.id }};
+  const ROUND_ID = {{ round.id }};
 
-// ── 기본 정보 저장 ─────────────────────────────────────────
-async function saveConfig() {
-  const payload = {
-    company_name:    document.getElementById('company-name').value.trim(),
-    company_reg_num: document.getElementById('company-reg-num').value.trim(),
-    issue_date:      document.getElementById('issue-date').value,
-    reg_date:        document.getElementById('reg-date').value,
-    par_value:       parseInt(document.getElementById('par-value').value) || 500,
-    capital_before:  parseInt(document.getElementById('capital-before').value) || null,
-    shares_before:   parseInt(document.getElementById('shares-before').value) || null,
-  };
-  try {
-    const res = await apiCall(`/round/${ROUND_ID}/step04/config`, 'POST', payload);
-    if (res.success) {
-      showToast('저장되었습니다', 'success');
-      // 변경 후 수치 실시간 반영
-      refreshCapitalDisplay(payload);
-    } else {
-      showToast(res.message || '저장 실패', 'error');
-    }
-  } catch (e) {
-    showToast('오류: ' + e.message, 'error');
-  }
-}
+  async function generateDocuments() {
+    const btn = document.getElementById('generate-btn');
+    const resultsDiv = document.getElementById('generation-results');
 
-function refreshCapitalDisplay(payload) {
-  const totalQty = {{ total_qty }};
-  const parValue = payload.par_value || 500;
-  const capBefore = payload.capital_before || 0;
-  const shrBefore = payload.shares_before || 0;
+    btn.disabled = true;
+    btn.textContent = '생성 중...';
+    resultsDiv.innerHTML = '<div style="text-align:center;padding:20px;color:#666;">서류 생성 중...</div>';
 
-  const capIncrease = totalQty * parValue;
-  const capAfter    = capBefore + capIncrease;
-  const shrAfter    = shrBefore + totalQty;
+    try {
+      const res = await apiCall(`/round/${ROUND_ID}/step04/generate`, 'POST');
 
-  const fmt = n => n.toLocaleString('ko-KR');
+      if (res.success) {
+        let html = '<div style="background:#e8f5e9;padding:16px;border-radius:4px;margin-bottom:16px;">';
+        html += '<div style="font-weight:700;color:#2e7d32;margin-bottom:8px;">✓ 서류 생성 완료</div>';
+        html += '</div>';
 
-  const elShrBefore  = document.getElementById('disp-shares-before');
-  const elCapBefore  = document.getElementById('disp-capital-before');
-  const elShrAfter   = document.getElementById('disp-shares-after');
-  const elCapAfter   = document.getElementById('disp-capital-after');
+        // 생성된 파일 목록
+        if (res.data.files && res.data.files.length > 0) {
+          html += '<div style="margin-bottom:20px;">';
+          html += '<h4 style="margin-bottom:12px;">생성된 서류</h4>';
+          html += '<div class="download-list">';
+          res.data.files.forEach(file => {
+            html += '<div class="download-item">';
+            html += `<div style="flex:1;">`;
+            html += `<div style="font-weight:600;margin-bottom:4px;">${file.name}</div>`;
+            if (file.note) {
+              html += `<div style="font-size:12px;color:#d32f2f;white-space:pre-line;">${file.note}</div>`;
+            }
+            html += `</div>`;
+            const filename = file.path.split(/[/\\]/).pop();
+            html += `<a href="/round/${ROUND_ID}/download_step04/${filename}" class="btn btn-success btn-sm">&#11123; 다운로드</a>`;
+            html += '</div>';
+          });
+          html += '</div></div>';
+        }
 
-  if (elShrBefore)  elShrBefore.textContent  = shrBefore  ? fmt(shrBefore)  : '-';
-  if (elCapBefore)  elCapBefore.textContent  = capBefore  ? fmt(capBefore)  : '-';
-  if (elShrAfter)   elShrAfter.textContent   = shrBefore  ? fmt(shrAfter)   : '-';
-  if (elCapAfter)   elCapAfter.textContent   = capBefore  ? fmt(capAfter)   : '-';
-}
+        // 수동 준비 서류
+        if (res.data.manual_tasks && res.data.manual_tasks.length > 0) {
+          html += '<div>';
+          html += '<h4 style="margin-bottom:12px;">직접 준비 필요 서류</h4>';
+          html += '<div style="background:#fff3e0;padding:16px;border-radius:4px;border-left:4px solid #f57c00;">';
+          res.data.manual_tasks.forEach(task => {
+            html += '<div style="margin-bottom:12px;">';
+            html += `<div style="font-weight:600;margin-bottom:4px;">• ${task.name}</div>`;
+            if (task.note) {
+              html += `<div style="font-size:13px;color:#666;margin-left:16px;">${task.note}</div>`;
+            }
+            html += '</div>';
+          });
+          html += '</div></div>';
+        }
 
-// ── 집계표 생성 ────────────────────────────────────────────
-async function generateDocs() {
-  const btn = document.getElementById('generate-btn');
-  btn.disabled = true;
-  btn.textContent = '생성 중...';
-  const resultEl = document.getElementById('generate-result');
-  resultEl.innerHTML = '';
-
-  try {
-    const res = await apiCall(`/round/${ROUND_ID}/step04/generate`, 'POST', {});
-    if (!res.success) {
-      showToast(res.message || '생성 실패', 'error');
-      return;
-    }
-    let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
-    for (const item of res.data) {
-      if (item.success) {
-        html += `
-          <div style="display:flex;align-items:center;justify-content:space-between;
-                      padding:10px 14px;background:#f0f7f0;border-radius:6px;border:1px solid #c3e6cb;">
-            <span style="font-size:13px;">✅ ${item.name} 생성 완료</span>
-            <a href="/round/${ROUND_ID}/step04/download/${item.filename}"
-               class="btn btn-primary btn-sm">다운로드</a>
-          </div>`;
+        resultsDiv.innerHTML = html;
+        showToast('서류 생성 완료', 'success');
       } else {
-        html += `
-          <div style="padding:10px 14px;background:#fff3f3;border-radius:6px;border:1px solid #f5c6cb;">
-            <span style="font-size:13px;color:#c0392b;">❌ ${item.name} 실패: ${item.message || ''}</span>
-          </div>`;
+        resultsDiv.innerHTML = `<div style="background:#ffebee;padding:16px;border-radius:4px;color:#c62828;">${res.message || '생성 실패'}</div>`;
+        showToast(res.message || '생성 실패', 'error');
       }
+    } catch (e) {
+      resultsDiv.innerHTML = `<div style="background:#ffebee;padding:16px;border-radius:4px;color:#c62828;">오류: ${e.message}</div>`;
+      showToast('생성 오류: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '등기신청 서류 생성';
     }
-    html += '</div>';
-    resultEl.innerHTML = html;
-    showToast('생성 완료', 'success');
-  } catch (e) {
-    showToast('오류: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '⚡ 등기신청 집계표 생성 (.xlsx)';
   }
-}
 
-// ── 체크리스트 ─────────────────────────────────────────────
-function toggleAllDocs(master) {
-  document.querySelectorAll('.doc-chk').forEach(cb => {
-    cb.checked = master.checked;
-    updateRowMark(cb);
-  });
-  updateDoneCount();
-}
+  async function deleteOutput(outputId, filename) {
+    if (!confirm(`"${filename}"을(를) 삭제하시겠습니까?`)) return;
 
-function onDocCheck() {
-  document.querySelectorAll('.doc-chk').forEach(updateRowMark);
-  updateDoneCount();
-  const all   = document.querySelectorAll('.doc-chk').length;
-  const done  = document.querySelectorAll('.doc-chk:checked').length;
-  document.getElementById('chk-all-docs').checked = (done === all);
-}
+    try {
+      const res = await apiCall(`/round/${ROUND_ID}/output/${outputId}`, 'DELETE');
+      if (res.success) {
+        const item = document.querySelector(`.download-item[data-output-id="${outputId}"]`);
+        if (item) item.remove();
 
-function updateRowMark(cb) {
-  const td = cb.closest('tr').querySelector('td:last-child');
-  if (td) td.textContent = cb.checked ? '☑' : '☐';
-}
+        const list = document.getElementById('output-list');
+        if (list && list.children.length === 0) {
+          list.parentElement.remove();
+        }
 
-function updateDoneCount() {
-  const done = document.querySelectorAll('.doc-chk:checked').length;
-  document.getElementById('doc-done-count').textContent = done;
-}
+        showToast('결과물이 삭제되었습니다', 'success');
+      } else {
+        showToast(res.message || '삭제 실패', 'error');
+      }
+    } catch (e) {
+      showToast('삭제 오류: ' + e.message, 'error');
+    }
+  }
 </script>
 {% endblock %}

@@ -17,6 +17,8 @@ from processors.number_korean import number_to_korean
 from processors.excel_writer import generate_exercise_excel, generate_registration_excel, generate_issuance_detail_excel
 from processors.ocr_reader import extract_rrn_batch
 from processors.docx_writer import generate_hwakjakseo, generate_gongmun
+from processors.pdf_name_extractor import extract_name_from_pdf, match_name_to_applicants
+from processors.step04_generator import generate_step04_documents
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -497,6 +499,64 @@ def delete_document(round_id, doc_id):
     return jsonify(success=True, message='서류가 삭제되었습니다.')
 
 
+@app.route('/round/<int:round_id>/extract_name_from_pdf', methods=['POST'])
+def extract_pdf_name(round_id):
+    """PDF에서 신청자 이름 추출 및 매칭"""
+    round_obj = db.get_round(round_id)
+    if not round_obj:
+        return jsonify(success=False, message='회차를 찾을 수 없습니다.'), 404
+
+    if 'file' not in request.files:
+        return jsonify(success=False, message='파일이 없습니다.'), 400
+
+    file = request.files['file']
+    if not file or not file.filename:
+        return jsonify(success=False, message='파일을 선택하세요.'), 400
+
+    # 임시 파일로 저장
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+        file.save(tmp.name)
+        tmp_path = tmp.name
+
+    try:
+        # PDF에서 이름 추출
+        extracted_name = extract_name_from_pdf(tmp_path)
+
+        if not extracted_name:
+            return jsonify(success=False, message='PDF에서 이름을 찾을 수 없습니다.')
+
+        # 신청자 명단 조회
+        applicants = db.get_applicants(round_id)
+        applicant_names = {str(ap['id']): ap['name'] for ap in applicants}
+
+        # 이름 매칭
+        matched_id, matched_name = match_name_to_applicants(extracted_name, applicant_names)
+
+        if not matched_id:
+            return jsonify(
+                success=False,
+                message=f'"{extracted_name}"과 일치하는 신청자를 찾을 수 없습니다.',
+                extracted_name=extracted_name
+            )
+
+        return jsonify(
+            success=True,
+            extracted_name=extracted_name,
+            matched_id=int(matched_id),
+            matched_name=matched_name
+        )
+
+    except Exception as e:
+        return jsonify(success=False, message=f'처리 오류: {str(e)}')
+
+    finally:
+        # 임시 파일 삭제
+        try:
+            os.unlink(tmp_path)
+        except:
+            pass
+
+
 @app.route('/round/<int:round_id>/upload/bulk', methods=['POST'])
 def upload_bulk(round_id):
     """Bulk upload: files + optional doc_type or auto-detect from filename."""
@@ -626,6 +686,33 @@ def merge_step01(round_id):
             }
 
     return jsonify(success=True, data=results)
+
+
+@app.route('/round/<int:round_id>/output/<int:output_id>', methods=['DELETE'])
+def delete_output(round_id, output_id):
+    """결과물 삭제 (파일 + DB)"""
+    conn = db.get_db()
+    row = conn.execute(
+        "SELECT * FROM step_outputs WHERE id=? AND round_id=?",
+        (output_id, round_id)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify(success=False, message='결과물을 찾을 수 없습니다.'), 404
+
+    # 실제 파일 삭제
+    file_path = row['output_path']
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            print(f"파일 삭제 실패: {file_path}, {e}")
+
+    # DB에서 삭제
+    db.delete_step_output(output_id)
+
+    return jsonify(success=True, message='결과물이 삭제되었습니다.')
 
 
 @app.route('/round/<int:round_id>/download/<path:filename>')
@@ -1117,124 +1204,76 @@ def download_step033(round_id, filename):
 
 @app.route('/round/<int:round_id>/step04')
 def step04(round_id):
+    """Step 04 - 등기신청"""
     round_obj = db.get_round(round_id)
     if not round_obj:
         abort(404)
+
     applicants = db.get_applicants(round_id)
-    prices     = db.get_prices_for_round(round_id)
-    config     = db.get_reg_config(round_id)
-    outputs    = db.get_step_outputs(round_id, 'step04')
+    outputs = db.get_step_outputs(round_id, 'step04')
 
-    # 행사가액별 집계
-    price_summary = {}
-    for p in prices:
-        price_summary[p] = {'count': 0, 'qty': 0, 'amount': 0}
-    total_qty = 0
-    total_amount = 0
-    for ap in applicants:
-        p   = ap.get('exercise_price') or 0
-        qty = ap.get('quantity') or 0
-        if p not in price_summary:
-            price_summary[p] = {'count': 0, 'qty': 0, 'amount': 0}
-        price_summary[p]['count']  += 1
-        price_summary[p]['qty']    += qty
-        price_summary[p]['amount'] += p * qty
-        total_qty    += qty
-        total_amount += p * qty
-
-    par_value      = int(config.get('par_value') or 500)
-    capital_before = int(config.get('capital_before') or 0)
-    shares_before  = int(config.get('shares_before') or 0)
-    capital_increase = total_qty * par_value
-    capital_after    = capital_before + capital_increase
-    shares_after     = shares_before  + total_qty
+    # 총 행사주식수 계산
+    total_shares = sum(ap.get('quantity') or 0 for ap in applicants)
 
     return render_template(
         'step04.html',
         round=round_obj,
         applicants=applicants,
-        prices=prices,
-        config=config,
         outputs=outputs,
-        price_summary=price_summary,
-        total_qty=total_qty,
-        total_amount=total_amount,
-        par_value=par_value,
-        capital_before=capital_before,
-        shares_before=shares_before,
-        capital_increase=capital_increase,
-        capital_after=capital_after,
-        shares_after=shares_after,
+        total_shares=total_shares,
     )
-
-
-@app.route('/round/<int:round_id>/step04/config', methods=['POST'])
-def step04_config(round_id):
-    data = request.get_json(silent=True) or {}
-    try:
-        db.save_reg_config(
-            round_id,
-            data.get('reg_date', ''),
-            data.get('issue_date', ''),
-            data.get('par_value') or 500,
-            data.get('capital_before') or None,
-            data.get('shares_before') or None,
-            data.get('company_name', 'S2W Inc.'),
-            data.get('company_reg_num', ''),
-        )
-        return jsonify(success=True)
-    except Exception as e:
-        return jsonify(success=False, message=str(e))
 
 
 @app.route('/round/<int:round_id>/step04/generate', methods=['POST'])
 def step04_generate(round_id):
+    """Step 04 서류 생성"""
     round_obj = db.get_round(round_id)
     if not round_obj:
         return jsonify(success=False, message='회차를 찾을 수 없습니다.'), 404
 
     applicants = db.get_applicants(round_id)
     if not applicants:
-        return jsonify(success=False, message='신청자 데이터가 없습니다. Step 01에서 신청자를 먼저 등록하세요.')
+        return jsonify(success=False, message='신청자 데이터가 없습니다.')
 
-    config     = db.get_reg_config(round_id)
     output_dir = os.path.join(OUTPUT_FOLDER, str(round_id), 'step04')
-    os.makedirs(output_dir, exist_ok=True)
-
-    filename  = 'registration_summary.xlsx'
-    out_path  = os.path.join(output_dir, filename)
+    templates_dir = os.path.join(BASE_DIR, 'templates_step04')
 
     try:
-        generate_registration_excel(
-            round_obj['name'],
-            round_obj.get('exercise_date', ''),
-            applicants,
-            config,
-            out_path,
-        )
-        db.save_step_output(round_id, 'step04', filename, out_path)
-        return jsonify(success=True, data=[{
-            'name': '등기신청집계표.xlsx',
-            'filename': filename,
-            'success': True,
-        }])
+        results = generate_step04_documents(round_id, applicants, output_dir, templates_dir)
+
+        # 생성된 파일들 DB에 저장
+        for file_info in results.get('files', []):
+            filename = os.path.basename(file_info['path'])
+            db.save_step_output(round_id, 'step04', filename, file_info['path'])
+
+        return jsonify(success=True, data=results)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify(success=False, message=str(e))
 
 
-@app.route('/round/<int:round_id>/step04/download/<path:filename>')
+@app.route('/round/<int:round_id>/download_step04/<path:filename>')
 def download_step04(round_id, filename):
+    """Step 04 서류 다운로드"""
     output_dir = os.path.join(OUTPUT_FOLDER, str(round_id), 'step04')
-    safe       = os.path.basename(filename)
-    full_path  = os.path.join(output_dir, safe)
+    safe = os.path.basename(filename)
+    full_path = os.path.join(output_dir, safe)
+
     if not os.path.isfile(full_path):
         abort(404)
-    display_map = {
-        'registration_summary.xlsx': '등기신청집계표.xlsx',
-    }
-    display = display_map.get(safe, safe)
-    mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    return send_file(full_path, mimetype=mime, as_attachment=True, download_name=display)
+
+    # MIME 타입 자동 감지
+    if safe.endswith('.pdf'):
+        mime = 'application/pdf'
+    elif safe.endswith('.hwpx'):
+        mime = 'application/x-hwpx'
+    elif safe.endswith('.xlsx'):
+        mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    else:
+        mime = 'application/octet-stream'
+
+    return send_file(full_path, mimetype=mime, as_attachment=True, download_name=safe)
 
 
 # ── Step 05 – 예탁원 신주발행의뢰 ─────────────────────────────────────────────
