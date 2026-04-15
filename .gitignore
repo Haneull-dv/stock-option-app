@@ -25,8 +25,8 @@ Thumbs.db
 .env
 *.env
 
-# 디버그 스크립트 (선택)
-debug_docx.py
+# 마이그레이션 디버그 스크립트
+migrations/debug_scripts/
 
 # Claude Code 메모리
 .claude/

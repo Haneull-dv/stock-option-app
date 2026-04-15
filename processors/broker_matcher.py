@@ -6,7 +6,7 @@ import openpyxl
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CODE_XLSX_PATH = os.path.join(BASE_DIR, 'code.xlsx')
+CODE_XLSX_PATH = os.path.join(BASE_DIR, 'templates_step05', 'code.xlsx')
 
 # 캐싱용 전역 변수
 _BROKER_CODE_MAP = None
