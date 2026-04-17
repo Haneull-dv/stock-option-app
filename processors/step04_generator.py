@@ -6,6 +6,10 @@ import shutil
 import glob
 from pypdf import PdfWriter, PdfReader
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+COMMON_TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates_common')
+ARTICLES_PDF = os.path.join(COMMON_TEMPLATES_DIR, '정관_원본 20260326 일부개정.pdf')
+
 
 def generate_step04_documents(round_id, applicants, output_dir, templates_dir):
     """
@@ -53,11 +57,10 @@ def generate_step04_documents(round_id, applicants, output_dir, templates_dir):
         print(f"  → files 배열에 추가됨")
 
     # ── 3. 정관 ──
-    articles_src = os.path.join(templates_dir, '정관.pdf')
     articles_dst = os.path.join(output_dir, '정관.pdf')
-    print(f"정관 원본 존재 여부: {os.path.exists(articles_src)}, 경로: {articles_src}")
-    if os.path.exists(articles_src):
-        shutil.copy2(articles_src, articles_dst)
+    print(f"정관 원본 존재 여부: {os.path.exists(ARTICLES_PDF)}, 경로: {ARTICLES_PDF}")
+    if os.path.exists(ARTICLES_PDF):
+        shutil.copy2(ARTICLES_PDF, articles_dst)
         results['files'].append({
             'name': '정관',
             'path': articles_dst,

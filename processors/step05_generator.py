@@ -29,6 +29,8 @@ from processors.zip_utils import create_zip_from_folder, copy_folder_contents
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates_step05')
+COMMON_TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates_common')
+ARTICLES_PDF = os.path.join(COMMON_TEMPLATES_DIR, '정관_원본 20260326 일부개정.pdf')
 
 
 def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, output_base_dir):
@@ -393,7 +395,7 @@ def _generate_registration_confirmation(work_dir, price, applicants, config, rou
 
 def _copy_corporate_seal(work_dir):
     """법인인감증명서 복사."""
-    src = os.path.join(TEMPLATES_DIR, 'reference_docs', '법인인감증명서.pdf')
+    src = os.path.join(COMMON_TEMPLATES_DIR, '법인인감증명서.pdf')
     dest = os.path.join(work_dir, '법인인감증명서.pdf')
     shutil.copy2(src, dest)
     return dest
@@ -431,9 +433,8 @@ def _generate_attachment2(price_folder, config, applicants_count, total_shares):
 
 def _copy_attachment3(price_folder):
     """붙임3: 발행근거_정관 복사."""
-    src = os.path.join(TEMPLATES_DIR, 'reference_docs', '(붙임3) 발행근거_정관_제10조제2항제2호_에스투더블유.pdf')
     dest = os.path.join(price_folder, '(붙임3) 발행근거_정관.pdf')
-    shutil.copy2(src, dest)
+    shutil.copy2(ARTICLES_PDF, dest)
     return dest
 
 
@@ -519,7 +520,7 @@ def _merge_account_copies(price_folder, applicants, price):
 
 def _copy_attachment9(price_folder):
     """붙임9: 법인등기부등본 복사."""
-    src = os.path.join(TEMPLATES_DIR, 'reference_docs', '(붙임9) 법인등기부등본_에스투더블유 260408.pdf')
+    src = os.path.join(COMMON_TEMPLATES_DIR, '(붙임9) 법인등기부등본_에스투더블유 260408.pdf')
     dest = os.path.join(price_folder, '(붙임9) 법인등기부등본.pdf')
     shutil.copy2(src, dest)
     return dest
