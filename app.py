@@ -19,6 +19,7 @@ from processors.ocr_reader import extract_rrn_batch
 from processors.docx_writer import generate_hwakjakseo, generate_gongmun
 from processors.pdf_name_extractor import extract_name_from_pdf, match_name_to_applicants
 from processors.step04_generator import generate_step04_documents
+from processors.step06_generator import generate_step06_zip
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -1637,6 +1638,246 @@ def employee_submit_post(token):
 
 
 # ── Error handlers ─────────────────────────────────────────────────────────────
+
+# ── STEP 06: KIND 상장신청 ────────────────────────────────────────────────────
+
+@app.route('/round/<int:round_id>/step06')
+def step06(round_id):
+    """Step06 KIND 상장신청 페이지."""
+    round_obj = db.get_round(round_id)
+    if not round_obj:
+        abort(404)
+
+    # 설정 조회
+    config = db.get_step06_config(round_id)
+
+    # 발행가액 목록
+    exercise_prices = db.get_exercise_prices(round_id)
+
+    # 발행등록사실확인서 업로드 현황
+    issuance_confirmations = db.get_step06_issuance_confirmations(round_id)
+
+    # 생성 이력
+    outputs = db.get_step_outputs(round_id, 'step06')
+
+    return render_template(
+        'step06.html',
+        round=round_obj,
+        config=config,
+        exercise_prices=[p['price'] for p in exercise_prices],
+        issuance_confirmations=issuance_confirmations,
+        outputs=outputs
+    )
+
+
+@app.route('/api/round/<int:round_id>/step06/config', methods=['POST'])
+def step06_config(round_id):
+    """Step06 기본 설정 저장."""
+    data = request.json
+    db.save_step06_config(
+        round_id,
+        submission_date=data.get('submission_date')
+    )
+    return jsonify(success=True)
+
+
+@app.route('/api/round/<int:round_id>/step06/upload/listing_fee', methods=['POST'])
+def upload_listing_fee(round_id):
+    """상장수수료 납부영수증 업로드."""
+    if 'file' not in request.files:
+        return jsonify(success=False, error='파일이 없습니다.')
+
+    file = request.files['file']
+    if not file or not file.filename:
+        return jsonify(success=False, error='파일을 선택하세요.')
+
+    try:
+        upload_dir = os.path.join(UPLOAD_FOLDER, str(round_id), 'step06')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(upload_dir, f'listing_fee_{filename}')
+        file.save(file_path)
+
+        db.save_step06_config(round_id, listing_fee_receipt=file_path)
+
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(success=False, error=str(e))
+
+
+@app.route('/api/round/<int:round_id>/step06/upload/holding_proof', methods=['POST'])
+def upload_holding_proof(round_id):
+    """의무보유증명서 및 의무보유청구내역 폴더 업로드."""
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify(success=False, error='파일이 없습니다.')
+
+    try:
+        upload_dir = os.path.join(UPLOAD_FOLDER, str(round_id), 'step06', 'holding_proof')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        for file in files:
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+                file_path = os.path.join(upload_dir, filename)
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                file.save(file_path)
+
+        db.save_step06_config(round_id, holding_proof_folder=upload_dir)
+
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(success=False, error=str(e))
+
+
+@app.route('/api/round/<int:round_id>/step06/upload/issuance_confirmation', methods=['POST'])
+def upload_issuance_confirmation(round_id):
+    """발행가액별 발행등록사실확인서 업로드."""
+    if 'file' not in request.files:
+        return jsonify(success=False, error='파일이 없습니다.')
+
+    file = request.files['file']
+    price = request.form.get('exercise_price')
+
+    if not file or not file.filename or not price:
+        return jsonify(success=False, error='파일과 발행가액을 모두 입력하세요.')
+
+    try:
+        price = int(price)
+        upload_dir = os.path.join(UPLOAD_FOLDER, str(round_id), 'step06', 'issuance_confirmations')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(upload_dir, f'{price}_{filename}')
+        file.save(file_path)
+
+        db.save_step06_issuance_confirmation(round_id, price, file_path, filename)
+
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(success=False, error=str(e))
+
+
+@app.route('/api/round/<int:round_id>/step06/upload/issuance_folder', methods=['POST'])
+def upload_issuance_folder(round_id):
+    """발행등록사실확인서 폴더 업로드 (여러 파일 자동 매칭)."""
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify(success=False, error='파일이 없습니다.')
+
+    try:
+        upload_dir = os.path.join(UPLOAD_FOLDER, str(round_id), 'step06', 'issuance_confirmations')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        exercise_prices = [p['price'] for p in db.get_exercise_prices(round_id)]
+        uploaded_count = 0
+
+        for file in files:
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+
+                # 파일명에서 발행가액 추출 시도
+                matched_price = None
+                for price in exercise_prices:
+                    if str(price) in filename:
+                        matched_price = price
+                        break
+
+                file_path = os.path.join(upload_dir, filename)
+                file.save(file_path)
+
+                if matched_price:
+                    db.save_step06_issuance_confirmation(round_id, matched_price, file_path, filename)
+                    uploaded_count += 1
+
+        return jsonify(success=True, uploaded_count=uploaded_count)
+    except Exception as e:
+        return jsonify(success=False, error=str(e))
+
+
+@app.route('/api/round/<int:round_id>/step06/upload/employment_cert', methods=['POST'])
+def upload_employment_cert(round_id):
+    """재직증명서 폴더 업로드."""
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify(success=False, error='파일이 없습니다.')
+
+    try:
+        upload_dir = os.path.join(UPLOAD_FOLDER, str(round_id), 'step06', 'employment_cert')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        for file in files:
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+                file_path = os.path.join(upload_dir, filename)
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                file.save(file_path)
+
+        db.save_step06_config(round_id, employment_cert_folder=upload_dir)
+
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(success=False, error=str(e))
+
+
+@app.route('/api/round/<int:round_id>/step06/upload/exercise_summary', methods=['POST'])
+def upload_exercise_summary(round_id):
+    """스톡옵션 행사현황표 엑셀 업로드."""
+    if 'file' not in request.files:
+        return jsonify(success=False, error='파일이 없습니다.')
+
+    file = request.files['file']
+    if not file or not file.filename:
+        return jsonify(success=False, error='파일을 선택하세요.')
+
+    try:
+        upload_dir = os.path.join(UPLOAD_FOLDER, str(round_id), 'step06')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(upload_dir, f'exercise_summary_{filename}')
+        file.save(file_path)
+
+        db.save_step06_config(round_id, exercise_summary_excel=file_path)
+
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(success=False, error=str(e))
+
+
+@app.route('/api/round/<int:round_id>/step06/generate', methods=['POST'])
+def step06_generate(round_id):
+    """KIND 상장신청 ZIP 파일 생성."""
+    round_obj = db.get_round(round_id)
+    if not round_obj:
+        return jsonify(success=False, message='회차를 찾을 수 없습니다.')
+
+    config = db.get_step06_config(round_id)
+    output_base = os.path.join(OUTPUT_FOLDER, str(round_id))
+
+    try:
+        result = generate_step06_zip(round_obj, config, output_base)
+
+        if result['success']:
+            # 생성 이력 저장
+            zip_filename = os.path.basename(result['zip_path'])
+            rel_path = os.path.relpath(result['zip_path'], OUTPUT_FOLDER)
+            db.add_step_output(round_id, 'step06', zip_filename, rel_path)
+
+            return jsonify(
+                success=True,
+                message=result['message'],
+                warnings=result.get('warnings', [])
+            )
+        else:
+            return jsonify(success=False, error=result['message'])
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify(success=False, error=str(e))
+
 
 @app.errorhandler(404)
 def not_found(e):

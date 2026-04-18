@@ -148,7 +148,7 @@ async function submitEditRound(event) {
     ('03-3', '의무보유', '의무보유 확약서 처리', '/round/' ~ round.id ~ '/step033', True),
     ('04', '등기신청', '자본금 변동 집계 및 법원 등기 신청 서류 준비', '/round/' ~ round.id ~ '/step04', True),
     ('05', '예탁원 신주발행', '행사가액별 예탁원 신주발행 등록 서류 준비', '/round/' ~ round.id ~ '/step05', True),
-    ('06', 'KIND 상장신청', 'KIND 시스템 상장 신청', '#', False),
+    ('06', 'KIND 상장신청', 'KIND 시스템 상장 신청 서류 준비', '/round/' ~ round.id ~ '/step06', True),
   ] %}
 
   {% for num, name, desc, link, available in steps %}

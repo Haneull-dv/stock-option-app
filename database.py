@@ -714,3 +714,90 @@ def delete_attachment8(round_id, exercise_price):
     conn.execute("DELETE FROM attachment8 WHERE round_id=? AND exercise_price=?", (round_id, exercise_price))
     conn.commit()
     conn.close()
+
+
+# ── Step06 (KIND 상장신청) helpers ─────────────────────────────────────────────
+
+def save_step06_config(round_id, submission_date=None, listing_fee_receipt=None,
+                       holding_proof_folder=None, employment_cert_folder=None,
+                       exercise_summary_excel=None):
+    """Step06 기본 설정 저장."""
+    conn = get_db()
+    updates = []
+    params = []
+
+    if submission_date is not None:
+        updates.append("submission_date=?")
+        params.append(submission_date)
+    if listing_fee_receipt is not None:
+        updates.append("listing_fee_receipt=?")
+        params.append(listing_fee_receipt)
+    if holding_proof_folder is not None:
+        updates.append("holding_proof_folder=?")
+        params.append(holding_proof_folder)
+    if employment_cert_folder is not None:
+        updates.append("employment_cert_folder=?")
+        params.append(employment_cert_folder)
+    if exercise_summary_excel is not None:
+        updates.append("exercise_summary_excel=?")
+        params.append(exercise_summary_excel)
+
+    if updates:
+        updates.append("updated_at=datetime('now', 'localtime')")
+        params.append(round_id)
+
+        # UPSERT
+        conn.execute(f"""
+            INSERT INTO step06_config (round_id, {', '.join(u.split('=')[0] for u in updates[:-1])})
+            VALUES (?, {', '.join('?' * (len(updates) - 1))})
+            ON CONFLICT(round_id) DO UPDATE SET {', '.join(updates)}
+        """, [round_id] + params[:-1] + [round_id])
+        conn.commit()
+
+    conn.close()
+
+
+def get_step06_config(round_id):
+    """Step06 설정 조회."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM step06_config WHERE round_id=?", (round_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
+def save_step06_issuance_confirmation(round_id, exercise_price, file_path, original_name):
+    """발행가액별 발행등록사실확인서 저장."""
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO step06_issuance_confirmations
+        (round_id, exercise_price, file_path, original_name)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(round_id, exercise_price) DO UPDATE SET
+          file_path=excluded.file_path,
+          original_name=excluded.original_name,
+          uploaded_at=datetime('now', 'localtime')
+    """, (round_id, exercise_price, file_path, original_name))
+    conn.commit()
+    conn.close()
+
+
+def get_step06_issuance_confirmations(round_id):
+    """해당 회차의 모든 발행등록사실확인서 조회."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM step06_issuance_confirmations WHERE round_id=? ORDER BY exercise_price",
+        (round_id,)
+    ).fetchall()
+    conn.close()
+    return {r['exercise_price']: dict(r) for r in rows}
+
+
+def delete_step06_issuance_confirmation(round_id, exercise_price):
+    """특정 발행가액의 발행등록사실확인서 삭제."""
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM step06_issuance_confirmations WHERE round_id=? AND exercise_price=?",
+        (round_id, exercise_price)
+    )
+    conn.commit()
+    conn.close()

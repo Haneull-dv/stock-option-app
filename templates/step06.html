@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+{% block title %}STEP 06 — KIND 상장신청{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header-row">
+        <h1>STEP 06 — KIND 상장신청</h1>
+        <a href="/round/{{ round.id }}" class="btn btn-secondary">← 회차 상세</a>
+    </div>
+
+    <div class="card">
+        <h2>1. 기본 정보 설정</h2>
+        <form id="configForm">
+            <div class="form-group">
+                <label>제출일</label>
+                <input type="date" name="submission_date" id="submission_date"
+                       value="{{ config.submission_date or '' }}" required>
+            </div>
+        </form>
+        <button onclick="saveConfig()" class="btn btn-primary">저장</button>
+    </div>
+
+    <div class="card">
+        <h2>2. 직접 첨부 서류</h2>
+        <p class="text-muted">재경팀, 대신증권, 예탁원, HR팀에서 받은 서류를 업로드하세요.</p>
+
+        <!-- 상장수수료 납부영수증 -->
+        <div class="form-group">
+            <label>상장수수료 납부영수증 (재경팀 이체확인증)</label>
+            <input type="file" id="listing_fee_receipt" accept=".pdf,.jpg,.jpeg,.png">
+            <button onclick="uploadListingFee()" class="btn btn-sm">업로드</button>
+            {% if config.listing_fee_receipt %}
+            <span class="text-success">✓ 업로드됨</span>
+            {% endif %}
+        </div>
+
+        <!-- 의무보유증명서 및 의무보유청구내역 폴더 -->
+        <div class="form-group">
+            <label>의무보유증명서 및 의무보유청구내역 (폴더 업로드, 대신증권 메일)</label>
+            <input type="file" id="holding_proof_folder" webkitdirectory directory multiple>
+            <button onclick="uploadHoldingProof()" class="btn btn-sm">업로드</button>
+            {% if config.holding_proof_folder %}
+            <span class="text-success">✓ 업로드됨</span>
+            {% endif %}
+        </div>
+
+        <!-- 발행등록사실확인서 (발행가액별) -->
+        <div class="form-group">
+            <label>발행등록사실확인서 (예탁원, 발행가액별)</label>
+            <p class="text-muted">발행가액별로 파일을 업로드하거나, 폴더에 파일 여러 개를 넣어 한번에 업로드하세요.</p>
+
+            <div id="issuance_confirmations_list">
+                {% for price in exercise_prices %}
+                <div class="price-row">
+                    <label>{{ "{:,}".format(price) }}원:</label>
+                    <input type="file" id="issuance_{{ price }}" accept=".pdf">
+                    <button onclick="uploadIssuanceConfirmation({{ price }})" class="btn btn-sm">업로드</button>
+                    <span id="issuance_{{ price }}_status">
+                        {% if issuance_confirmations.get(price) %}
+                        <span class="text-success">✓ 업로드됨</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- 폴더 업로드 -->
+            <div class="form-group">
+                <label>또는 폴더 통째로 업로드:</label>
+                <input type="file" id="issuance_folder" webkitdirectory directory multiple>
+                <button onclick="uploadIssuanceFolder()" class="btn btn-sm">폴더 업로드</button>
+            </div>
+        </div>
+
+        <!-- 재직증명서 폴더 -->
+        <div class="form-group">
+            <label>재직증명서 / 경력증명서 / 자문계약서 (폴더 업로드, HR팀)</label>
+            <input type="file" id="employment_cert_folder" webkitdirectory directory multiple>
+            <button onclick="uploadEmploymentCert()" class="btn btn-sm">업로드</button>
+            {% if config.employment_cert_folder %}
+            <span class="text-success">✓ 업로드됨</span>
+            {% endif %}
+        </div>
+
+        <!-- 스톡옵션 행사현황표 엑셀 -->
+        <div class="form-group">
+            <label>스톡옵션 행사현황표 (엑셀 파일)</label>
+            <p class="text-muted">Step01에서 신청자 import할 때 사용한 엑셀 파일 (전체현황 시트 + 행사내역_누적 시트 포함)</p>
+            <input type="file" id="exercise_summary_excel" accept=".xlsx,.xls">
+            <button onclick="uploadExerciseSummary()" class="btn btn-sm">업로드</button>
+            {% if config.exercise_summary_excel %}
+            <span class="text-success">✓ 업로드됨</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>3. 서류 체크리스트</h2>
+        <p class="text-muted">아래 서류들은 자동으로 생성되거나 기존 Step에서 가져옵니다.</p>
+
+        <div class="checklist">
+            <div class="checklist-item">
+                <input type="checkbox" id="chk_articles" checked disabled>
+                <label>정관 (자동 포함)</label>
+            </div>
+            <div class="checklist-item">
+                <input type="checkbox" id="chk_registry" checked disabled>
+                <label>법인등기부등본 (260408 최신본 자동 포함)</label>
+            </div>
+            <div class="checklist-item">
+                <input type="checkbox" id="chk_shareholder_minutes" checked disabled>
+                <label>주주총회의사록 및 조정산식 (Step05 붙임4 폴더 자동 포함, 발행가액별)</label>
+            </div>
+            <div class="checklist-item">
+                <input type="checkbox" id="chk_deposit_cert" checked disabled>
+                <label>주금납입금 보관증명서 (Step05 붙임8 자동 포함, 발행가액별)</label>
+            </div>
+            <div class="checklist-item">
+                <input type="checkbox" id="chk_financial_consent" checked disabled>
+                <label>금융거래정보제공동의서 (자동 생성) ⚠️ 법인인감 날인 필요</label>
+            </div>
+            <div class="checklist-item">
+                <input type="checkbox" id="chk_masked_app" checked disabled>
+                <label>주식매수선택권 행사신청서 (Step01 신청서 합본 + 마스킹)</label>
+                <p class="text-muted">⚠️ 주민번호 뒷자리, 연락처, 주소 마스킹 필요</p>
+            </div>
+            <div class="checklist-item">
+                <input type="checkbox" id="chk_holding_commitment" checked disabled>
+                <label>의무보유확약서 (Step03-3 결과물 1,2페이지 PDF 자동 생성)</label>
+                <p class="text-muted">⚠️ 개인 날인 페이지와 개인 인감증명서는 별도 스캔 필요</p>
+            </div>
+            <div class="checklist-item">
+                <input type="checkbox" id="chk_exercise_summary" checked disabled>
+                <label>스톡옵션 행사현황표 (엑셀 → PDF 변환)</label>
+                <p class="text-muted">⚠️ 회사명판 및 법인인감 날인 필요</p>
+                <p class="text-muted">⚠️ 전체현황 시트와 행사내역_누적 시트 PDF 2페이지</p>
+            </div>
+            <div class="checklist-item">
+                <input type="checkbox" id="chk_other_docs" checked disabled>
+                <label>기타비공개첨부서류 (자동 생성)</label>
+                <ul class="text-muted">
+                    <li>재직증명서 / 경력증명서 / 자문계약서 (업로드 폴더)</li>
+                    <li>주식매수선택권 부여계약서 (Step04 templates 자동 포함)</li>
+                    <li>법인인감증명서 (공용 문서 자동 포함)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>4. 생성</h2>
+        <button onclick="generateStep06()" class="btn btn-primary btn-large">
+            KIND 상장신청 ZIP 파일 생성
+        </button>
+    </div>
+
+    <div class="card">
+        <h2>5. 생성 이력</h2>
+        <div id="outputList">
+            {% if outputs %}
+                {% for output in outputs %}
+                <div class="output-item">
+                    <a href="/download/{{ output.output_path }}" download>
+                        📦 {{ output.output_filename }}
+                    </a>
+                    <span class="text-muted">{{ output.created_at }}</span>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">아직 생성된 파일이 없습니다.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+const roundId = {{ round.id }};
+
+async function saveConfig() {
+    const data = {
+        submission_date: document.getElementById('submission_date').value
+    };
+
+    const result = await apiCall(`/api/round/${roundId}/step06/config`, 'POST', data);
+    if (result.success) {
+        showToast('설정이 저장되었습니다.', 'success');
+    }
+}
+
+async function uploadListingFee() {
+    const fileInput = document.getElementById('listing_fee_receipt');
+    if (!fileInput.files.length) {
+        showToast('파일을 선택해주세요.', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    const response = await fetch(`/api/round/${roundId}/step06/upload/listing_fee`, {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+    if (result.success) {
+        showToast('파일이 업로드되었습니다.', 'success');
+        location.reload();
+    } else {
+        showToast(result.error || '업로드 실패', 'error');
+    }
+}
+
+async function uploadHoldingProof() {
+    const fileInput = document.getElementById('holding_proof_folder');
+    if (!fileInput.files.length) {
+        showToast('폴더를 선택해주세요.', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    for (let file of fileInput.files) {
+        formData.append('files', file);
+    }
+
+    const response = await fetch(`/api/round/${roundId}/step06/upload/holding_proof`, {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+    if (result.success) {
+        showToast('폴더가 업로드되었습니다.', 'success');
+        location.reload();
+    } else {
+        showToast(result.error || '업로드 실패', 'error');
+    }
+}
+
+async function uploadIssuanceConfirmation(price) {
+    const fileInput = document.getElementById(`issuance_${price}`);
+    if (!fileInput.files.length) {
+        showToast('파일을 선택해주세요.', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('exercise_price', price);
+
+    const response = await fetch(`/api/round/${roundId}/step06/upload/issuance_confirmation`, {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+    if (result.success) {
+        showToast(`${price}원 발행등록사실확인서가 업로드되었습니다.`, 'success');
+        location.reload();
+    } else {
+        showToast(result.error || '업로드 실패', 'error');
+    }
+}
+
+async function uploadIssuanceFolder() {
+    const fileInput = document.getElementById('issuance_folder');
+    if (!fileInput.files.length) {
+        showToast('폴더를 선택해주세요.', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    for (let file of fileInput.files) {
+        formData.append('files', file);
+    }
+
+    const response = await fetch(`/api/round/${roundId}/step06/upload/issuance_folder`, {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+    if (result.success) {
+        showToast(`${result.uploaded_count}개 파일이 업로드되었습니다.`, 'success');
+        location.reload();
+    } else {
+        showToast(result.error || '업로드 실패', 'error');
+    }
+}
+
+async function uploadEmploymentCert() {
+    const fileInput = document.getElementById('employment_cert_folder');
+    if (!fileInput.files.length) {
+        showToast('폴더를 선택해주세요.', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    for (let file of fileInput.files) {
+        formData.append('files', file);
+    }
+
+    const response = await fetch(`/api/round/${roundId}/step06/upload/employment_cert`, {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+    if (result.success) {
+        showToast('폴더가 업로드되었습니다.', 'success');
+        location.reload();
+    } else {
+        showToast(result.error || '업로드 실패', 'error');
+    }
+}
+
+async function uploadExerciseSummary() {
+    const fileInput = document.getElementById('exercise_summary_excel');
+    if (!fileInput.files.length) {
+        showToast('파일을 선택해주세요.', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    const response = await fetch(`/api/round/${roundId}/step06/upload/exercise_summary`, {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+    if (result.success) {
+        showToast('파일이 업로드되었습니다.', 'success');
+        location.reload();
+    } else {
+        showToast(result.error || '업로드 실패', 'error');
+    }
+}
+
+async function generateStep06() {
+    if (!confirm('KIND 상장신청 ZIP 파일을 생성하시겠습니까?')) {
+        return;
+    }
+
+    showToast('생성 중... 잠시만 기다려주세요.', 'info');
+
+    const result = await apiCall(`/api/round/${roundId}/step06/generate`, 'POST');
+    if (result.success) {
+        showToast('생성 완료!', 'success');
+        if (result.warnings && result.warnings.length > 0) {
+            alert('경고:\n' + result.warnings.join('\n'));
+        }
+        location.reload();
+    } else {
+        showToast(result.error || '생성 실패', 'error');
+    }
+}
+</script>
+
+<style>
+.price-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.price-row label {
+    width: 100px;
+}
+
+.checklist {
+    margin-top: 15px;
+}
+
+.checklist-item {
+    padding: 10px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.checklist-item:last-child {
+    border-bottom: none;
+}
+
+.checklist-item label {
+    margin-left: 10px;
+    font-weight: 500;
+}
+
+.checklist-item ul {
+    margin-left: 50px;
+    margin-top: 5px;
+}
+
+.output-item {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.output-item a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+.output-item a:hover {
+    text-decoration: underline;
+}
+</style>
+{% endblock %}
