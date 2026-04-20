@@ -1400,7 +1400,9 @@ def step05_generate(round_id):
             acct_docs = db.get_documents_for_applicant_ids([ap_id], 'account_copy')
             if acct_docs:
                 try:
-                    account, broker = extract_account_and_broker(acct_docs[0]['file_path'])
+                    result = extract_account_and_broker(acct_docs[0]['file_path'])
+                    account = result.get('account', '')
+                    broker = result.get('broker', '')
                     if account or broker:
                         db.update_applicant_ocr(ap_id, ocr_account=account, broker=broker)
                         ap['ocr_account'] = account
@@ -1439,7 +1441,7 @@ def step05_generate(round_id):
 
         group = [ap for ap in applicants if ap.get('exercise_price') == price]
         if not group:
-            print(f"  ⚠ 신청자 없음, 건너뜀")
+            print(f"  WARNING 신청자 없음, 건너뜀")
             continue
 
         print(f"  신청자: {len(group)}명 ({', '.join(ap.get('name', '?') for ap in group[:5])}" +
@@ -1449,7 +1451,7 @@ def step05_generate(round_id):
         attachment8_file = None
         if price in attachment8_map:
             attachment8_file = attachment8_map[price].get('file_path')
-            print(f"  붙임8: {attachment8_map[price].get('original_name')} ✓")
+            print(f"  붙임8: {attachment8_map[price].get('original_name')} OK")
         else:
             print(f"  붙임8: 업로드 안됨 (건너뜀)")
 
@@ -1463,7 +1465,7 @@ def step05_generate(round_id):
                 db.save_step_output(
                     round_id, 'step05', result['zip_name'], result['zip_path']
                 )
-                print(f"\n  ✓ 생성 완료: {result['zip_name']}")
+                print(f"\n  OK 생성 완료: {result['zip_name']}")
                 print(f"  - 포함 파일: {len(result['files'])}개")
                 if result.get('errors'):
                     print(f"  - 경고: {len(result['errors'])}개")
@@ -1478,14 +1480,14 @@ def step05_generate(round_id):
                     'message': result['message']
                 })
             else:
-                print(f"\n  ✗ 생성 실패: {result.get('message', '알 수 없는 오류')}")
+                print(f"\n  FAIL 생성 실패: {result.get('message', '알 수 없는 오류')}")
                 results.append({
                     'success': False,
                     'name': f'{price:,}원',
                     'message': result.get('message', '생성 실패')
                 })
         except Exception as e:
-            print(f"\n  ✗ 예외 발생: {e}")
+            print(f"\n  FAIL 예외 발생: {e}")
             import traceback
             traceback.print_exc()
             results.append({

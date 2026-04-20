@@ -25,9 +25,6 @@ from datetime import datetime
 from PyPDF2 import PdfReader, PdfWriter, PdfMerger
 from processors.zip_utils import create_zip_from_folder
 from processors.docx_to_pdf import convert_docx_to_pdf
-import openpyxl
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates_step06')

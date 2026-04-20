@@ -123,6 +123,41 @@ def init_db():
             agent_address TEXT,
             FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS attachment8 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_id INTEGER NOT NULL,
+            exercise_price INTEGER NOT NULL,
+            file_name TEXT,
+            original_name TEXT,
+            file_path TEXT,
+            uploaded_at TEXT DEFAULT (datetime('now', 'localtime')),
+            UNIQUE(round_id, exercise_price),
+            FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS step06_config (
+            round_id INTEGER PRIMARY KEY,
+            submission_date TEXT,
+            listing_fee_receipt TEXT,
+            holding_proof_folder TEXT,
+            employment_cert_folder TEXT,
+            exercise_summary_excel TEXT,
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY(round_id) REFERENCES rounds(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS step06_issuance_confirmations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_id INTEGER NOT NULL,
+            exercise_price INTEGER NOT NULL,
+            file_path TEXT,
+            original_name TEXT,
+            uploaded_at TEXT DEFAULT (datetime('now', 'localtime')),
+            UNIQUE(round_id, exercise_price),
+            FOREIGN KEY(round_id) REFERENCES rounds(id) ON DELETE CASCADE
+        );
     """)
     conn.commit()
     conn.close()
@@ -144,6 +179,17 @@ def get_round(round_id):
     row = conn.execute("SELECT * FROM rounds WHERE id=?", (round_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def get_exercise_prices(round_id):
+    """회차의 행사가액 목록 조회."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM exercise_prices WHERE round_id=? ORDER BY price",
+        (round_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def create_round(name, exercise_date, notes, prices):

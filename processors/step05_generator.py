@@ -66,9 +66,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
                 work_dir, price, applicants, config, round_obj
             )
             files_created.append(('전자등록', electronic_hwpx))
-            print(f"      ✓ 완료: {os.path.basename(electronic_hwpx)}")
+            print(f"      OK 완료: {os.path.basename(electronic_hwpx)}")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"전자등록: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -80,9 +80,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
                 work_dir, price, applicants, config, round_obj
             )
             files_created.append(('발행등록확인신청서', confirmation_pdf))
-            print(f"      ✓ 완료")
+            print(f"      OK 완료")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"발행등록확인신청서: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -92,9 +92,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             print(f"    [3/12] 법인인감증명서 복사 중...")
             corp_seal_pdf = _copy_corporate_seal(work_dir)
             files_created.append(('법인인감증명서', corp_seal_pdf))
-            print(f"      ✓ 완료")
+            print(f"      OK 완료")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"법인인감증명서: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -108,9 +108,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             stock_code = config.get('stock_code', '488280')
             generate_issuance_detail_excel(applicants, price, stock_code, attachment1_xlsx)
             files_created.append(('붙임1', attachment1_xlsx))
-            print(f"      ✓ 완료 ({len(applicants)}명)")
+            print(f"      OK 완료 ({len(applicants)}명)")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"붙임1: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -121,9 +121,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             total_shares = sum(ap.get('quantity', 0) for ap in applicants)
             attachment2_hwpx = _generate_attachment2(price_folder, config, len(applicants), total_shares)
             files_created.append(('붙임2', attachment2_hwpx))
-            print(f"      ✓ 완료")
+            print(f"      OK 완료")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"붙임2: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -133,9 +133,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             print(f"    [6/12] 붙임3: 발행근거_정관 복사 중...")
             attachment3_pdf = _copy_attachment3(price_folder)
             files_created.append(('붙임3', attachment3_pdf))
-            print(f"      ✓ 완료")
+            print(f"      OK 완료")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"붙임3: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -146,9 +146,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             attachment4_folder = _copy_attachment4(price_folder, price)
             files_created.append(('붙임4', attachment4_folder))
             file_count = len([f for f in os.listdir(attachment4_folder) if os.path.isfile(os.path.join(attachment4_folder, f))])
-            print(f"      ✓ 완료 ({file_count}개 파일)")
+            print(f"      OK 완료 ({file_count}개 파일)")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"붙임4: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -158,9 +158,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             print(f"    [8/12] 붙임5: 주식매수선택권 부여및행사내역서 복사 중...")
             attachment5_pdf = _copy_attachment5(price_folder, price)
             files_created.append(('붙임5', attachment5_pdf))
-            print(f"      ✓ 완료")
+            print(f"      OK 완료")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"붙임5: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -170,9 +170,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             print(f"    [9/12] 붙임6: 신분증 합본 PDF 생성 중...")
             attachment6_pdf = _merge_id_copies(price_folder, applicants, price)
             files_created.append(('붙임6', attachment6_pdf))
-            print(f"      ✓ 완료 ({len(applicants)}명)")
+            print(f"      OK 완료 ({len(applicants)}명)")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"붙임6: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -182,9 +182,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             print(f"    [10/12] 붙임7: 계좌사본 합본 PDF 생성 중...")
             attachment7_pdf = _merge_account_copies(price_folder, applicants, price)
             files_created.append(('붙임7', attachment7_pdf))
-            print(f"      ✓ 완료 ({len(applicants)}명)")
+            print(f"      OK 완료 ({len(applicants)}명)")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"붙임7: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -198,14 +198,14 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
                 if ext in ['.jpg', '.jpeg', '.png']:
                     # 이미지 → PDF 변환
                     convert_image_to_pdf(attachment8_file, attachment8_dest)
-                    print(f"      ✓ 완료 (이미지→PDF 변환)")
+                    print(f"      OK 완료 (이미지→PDF 변환)")
                 else:
                     # PDF 그대로 복사
                     shutil.copy2(attachment8_file, attachment8_dest)
-                    print(f"      ✓ 완료")
+                    print(f"      OK 완료")
                 files_created.append(('붙임8', attachment8_dest))
             except Exception as e:
-                print(f"      ✗ 실패: {e}")
+                print(f"      FAIL 실패: {e}")
                 errors.append(f"붙임8: {e}")
         else:
             print(f"    [11/12] 붙임8: 업로드 안됨, 건너뜀")
@@ -217,9 +217,9 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             print(f"    [12/12] 붙임9: 법인등기부등본 복사 중...")
             attachment9_pdf = _copy_attachment9(price_folder)
             files_created.append(('붙임9', attachment9_pdf))
-            print(f"      ✓ 완료")
+            print(f"      OK 완료")
         except Exception as e:
-            print(f"      ✗ 실패: {e}")
+            print(f"      FAIL 실패: {e}")
             errors.append(f"붙임9: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -229,7 +229,7 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
         zip_name = f'신주발행의뢰_{price}원.zip'
         zip_path = os.path.join(output_base_dir, zip_name)
         create_zip_from_folder(work_dir, zip_path)
-        print(f"      ✓ 완료: {zip_name}")
+        print(f"      OK 완료: {zip_name}")
 
         # 임시 폴더 삭제
         shutil.rmtree(work_dir, ignore_errors=True)
