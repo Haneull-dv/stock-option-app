@@ -24,11 +24,8 @@ def number_to_korean(n: int) -> str:
                 digit = (group // (10 ** unit_idx)) % 10
                 if digit == 0:
                     continue
-                # '일십', '일백', '일천'은 '십', '백', '천'으로 (단, 일의 자리 '일'은 표기)
-                if digit == 1 and unit_idx > 0:
-                    group_str += _UNITS[unit_idx]
-                else:
-                    group_str += _ONES[digit] + _UNITS[unit_idx]
+                # 모든 1은 "일"로 표기 (은행 문서 규칙)
+                group_str += _ONES[digit] + _UNITS[unit_idx]
             result = group_str + _BIG[group_idx] + result
 
         group_idx += 1
