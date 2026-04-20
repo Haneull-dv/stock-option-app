@@ -762,6 +762,34 @@ def delete_attachment8(round_id, exercise_price):
     conn.close()
 
 
+# ── Step03 (행사대금 납입) helpers ─────────────────────────────────────────────
+
+def save_step03_config(round_id, payment_date=None, total_capital=None):
+    """Step03 기본 설정 저장."""
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO step03_config (round_id, payment_date, total_capital)
+           VALUES (?, ?, ?)
+           ON CONFLICT(round_id) DO UPDATE SET
+             payment_date=excluded.payment_date,
+             total_capital=excluded.total_capital,
+             updated_at=datetime('now', 'localtime')""",
+        (round_id, payment_date, total_capital)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_step03_config(round_id):
+    """Step03 설정 조회."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM step03_config WHERE round_id=?", (round_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
 # ── Step06 (KIND 상장신청) helpers ─────────────────────────────────────────────
 
 def save_step06_config(round_id, submission_date=None, listing_fee_receipt=None,

@@ -59,17 +59,22 @@
     <div class="form-group">
       <label class="form-label required">납입 마감일</label>
       <input type="date" id="payment-date" class="form-control"
-             value="{{ round.exercise_date or '' }}"
+             value="{{ config.payment_date or round.exercise_date or '' }}"
              style="max-width:200px;">
       <span style="font-size:12px;color:var(--text-muted);">은행 서류 날짜로 사용됩니다</span>
     </div>
     <div class="form-group">
       <label class="form-label">자본의 총액 (수납의뢰서용)</label>
       <input type="text" id="total-capital" class="form-control"
+             value="{{ config.total_capital or '' }}"
              placeholder="예: 5,384,693,000"
              style="max-width:240px;">
       <span style="font-size:12px;color:var(--text-muted);">비워두면 기존 템플릿 값 유지</span>
     </div>
+  </div>
+
+  <div style="margin-bottom:20px;">
+    <button class="btn btn-outline btn-sm" onclick="saveConfig()">💾 설정 저장</button>
   </div>
 
   <div style="margin-bottom:16px;">
@@ -107,6 +112,11 @@
 <div class="section-card">
   <div class="section-card-header">
     <h2 class="section-card-title">이전 생성 결과</h2>
+    <a href="/round/{{ round.id }}/step03/download_all_zip"
+       class="btn btn-primary btn-sm"
+       style="margin-left:auto;">
+      📦 전체 ZIP 다운로드
+    </a>
   </div>
   <div class="download-list">
     {% for out in outputs %}
@@ -122,6 +132,26 @@
 
 <script>
 const ROUND_ID = {{ round.id }};
+
+async function saveConfig() {
+  const paymentDate = document.getElementById('payment-date').value;
+  const totalCapital = document.getElementById('total-capital').value;
+
+  try {
+    const res = await apiCall(`/round/${ROUND_ID}/step03/config`, 'POST', {
+      payment_date: paymentDate || null,
+      total_capital: totalCapital || null,
+    });
+
+    if (res.success) {
+      showToast('설정이 저장되었습니다', 'success');
+    } else {
+      showToast('저장 실패', 'error');
+    }
+  } catch(e) {
+    showToast('오류: ' + e.message, 'error');
+  }
+}
 
 async function generateDocs() {
   const paymentDate = document.getElementById('payment-date').value;

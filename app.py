@@ -759,6 +759,7 @@ def step03(round_id):
     total_amount = sum(v['amount'] for v in price_summary.values())
 
     outputs = db.get_step_outputs(round_id, 'step03')
+    config = db.get_step03_config(round_id)
 
     return render_template(
         'step03.html',
@@ -768,8 +769,21 @@ def step03(round_id):
         total_qty=total_qty,
         total_amount=total_amount,
         outputs=outputs,
+        config=config,
         base_url=request.host_url.rstrip('/'),
     )
+
+
+@app.route('/round/<int:round_id>/step03/config', methods=['POST'])
+def step03_config(round_id):
+    """Step03 설정 저장."""
+    data = request.get_json(silent=True) or {}
+    db.save_step03_config(
+        round_id,
+        payment_date=data.get('payment_date'),
+        total_capital=data.get('total_capital')
+    )
+    return jsonify(success=True)
 
 
 @app.route('/round/<int:round_id>/step03/generate', methods=['POST'])
@@ -801,11 +815,17 @@ def step03_generate(round_id):
     # 날짜 파싱
     try:
         dt = datetime.strptime(payment_date, '%Y-%m-%d')
-        date_kr = f"{dt.year}년  {dt.month:02d}월  {dt.day:02d}일"
-        date_kr2 = f"{dt.year} 년   {dt.month:02d} 월   {dt.day:02d} 일"
+        # 수납의뢰서용 (단일 공백)
+        date_kr = f"{dt.year}년 {dt.month:02d}월 {dt.day:02d}일"
+        # 영수증용
         date_kr3 = f"{dt.year}년  {dt.month:02d}월  {dt.day:02d}일"
+        # 보관증명서용 (XML 태그로 분리된 날짜)
+        year_only = str(dt.year)
+        date_part = f" 년   {dt.month:02d} 월   {dt.day:02d} 일"
     except ValueError:
-        date_kr = date_kr2 = date_kr3 = payment_date
+        date_kr = date_kr3 = payment_date
+        year_only = '2026'
+        date_part = ' 년   02 월   23 일'
 
     output_dir = os.path.join(OUTPUT_FOLDER, str(round_id), 'step03')
     os.makedirs(output_dir, exist_ok=True)
@@ -815,45 +835,47 @@ def step03_generate(round_id):
     # 1. 행사내역 엑셀
     if 'excel' in doc_types:
         try:
-            excel_path = os.path.join(output_dir, 'exercise_detail.xlsx')
+            fname = '주식납입금 행사내역.xlsx'
+            excel_path = os.path.join(output_dir, fname)
             generate_exercise_excel(
                 round_obj['name'],
                 round_obj.get('exercise_date', ''),
                 applicants,
                 excel_path
             )
-            db.save_step_output(round_id, 'step03', 'exercise_detail.xlsx', excel_path)
-            results.append({'name': '행사내역.xlsx', 'filename': 'exercise_detail.xlsx', 'success': True})
+            db.save_step_output(round_id, 'step03', fname, excel_path)
+            results.append({'name': fname, 'filename': fname, 'success': True})
         except Exception as e:
-            results.append({'name': '행사내역.xlsx', 'success': False, 'message': str(e)})
-
-    # 행사가액 목록 문자열 (수납의뢰서용)
-    price_list_str = ', '.join(f'500원({p:,}원)' for p in sorted(price_summary.keys()))
+            results.append({'name': '주식납입금 행사내역.xlsx', 'success': False, 'message': str(e)})
 
     # 2. 수납의뢰서
     if 'sunabuiuiseo' in doc_types:
         try:
+            fname = '주식납입금 수납의뢰서.hwpx'
             tpl = os.path.join(TEMPLATES_HWP, '주식납입금 수납의뢰서_260223_스톡옵션.hwpx')
-            out = os.path.join(output_dir, 'sunabuiuiseo.hwpx')
+            out = os.path.join(output_dir, fname)
             reps = {
+                # 날짜 2개 치환 (한 덩어리 + 분리된 것)
                 '2026년 02월 23일': date_kr,
-                '2026 년   02 월   23 일': date_kr2,
+                '2026 ': f'{year_only} ',  # 공백 포함 (두 번째 날짜만 치환)
+                '년   02 월   23 일': date_part,
                 '110,123': f'{total_qty:,}',
-                '500원(1,250원), 500원(2,000원), 500원(4,130원)': price_list_str,
+                # 가격 목록은 치환 안 함 (길이 변경 시 HWPX 파일 손상)
             }
             if total_capital:
-                reps['5,384,693,000'] = total_capital
+                reps['5,384,693,000'] = f'{int(total_capital):,}'
             generate_hwpx(tpl, out, reps)
-            db.save_step_output(round_id, 'step03', 'sunabuiuiseo.hwpx', out)
-            results.append({'name': '수납의뢰서.hwpx', 'filename': 'sunabuiuiseo.hwpx', 'success': True})
+            db.save_step_output(round_id, 'step03', fname, out)
+            results.append({'name': fname, 'filename': fname, 'success': True})
         except Exception as e:
-            results.append({'name': '수납의뢰서.hwpx', 'success': False, 'message': str(e)})
+            results.append({'name': '주식납입금 수납의뢰서.hwpx', 'success': False, 'message': str(e)})
 
     # 3. 영수증
     if 'yeongsujeung' in doc_types:
         try:
+            fname = '주식납입금 영수증.hwpx'
             tpl = os.path.join(TEMPLATES_HWP, '주식납입금 영수증_260223_스톡옵션.hwpx')
-            out = os.path.join(output_dir, 'yeongsujeung.hwpx')
+            out = os.path.join(output_dir, fname)
             amount_korean = number_to_korean(total_amount)
             reps = {
                 '사천팔백팔십일만천오백': amount_korean,
@@ -861,10 +883,10 @@ def step03_generate(round_id):
                 '2026년  02월  23일': date_kr3,
             }
             generate_hwpx(tpl, out, reps)
-            db.save_step_output(round_id, 'step03', 'yeongsujeung.hwpx', out)
-            results.append({'name': '영수증.hwpx', 'filename': 'yeongsujeung.hwpx', 'success': True})
+            db.save_step_output(round_id, 'step03', fname, out)
+            results.append({'name': fname, 'filename': fname, 'success': True})
         except Exception as e:
-            results.append({'name': '영수증.hwpx', 'success': False, 'message': str(e)})
+            results.append({'name': '주식납입금 영수증.hwpx', 'success': False, 'message': str(e)})
 
     # 4. 보관증명서 (가격별)
     if 'bogwan' in doc_types:
@@ -882,7 +904,7 @@ def step03_generate(round_id):
 
         for price, info in sorted(price_summary.items()):
             amount = info['amount']
-            fname  = f'bogwan_{price}.hwpx'
+            fname  = f'주식납입금 보관증명서 발급의뢰서_{price:,}원.hwpx'
             out    = os.path.join(output_dir, fname)
 
             # 템플릿 선택: 동일 가격 있으면 그거, 없으면 가장 가까운 것
@@ -899,12 +921,14 @@ def step03_generate(round_id):
                 reps = {
                     orig['price']: f'{price:,}',
                     orig['amount']: f'{amount:,}',
-                    '2026 년   02 월   23 일': date_kr2,
+                    # 보관증명서 날짜는 XML 태그로 분리되어 있어서 두 부분으로 나눠 치환
+                    '2026': year_only,
+                    ' 년   02 월   23 일': date_part,
                 }
                 generate_hwpx(tpl, out, reps)
                 db.save_step_output(round_id, 'step03', fname, out)
                 results.append({
-                    'name': f'보관증명서_{price:,}원.hwpx',
+                    'name': fname,
                     'filename': fname,
                     'success': True
                 })
@@ -936,6 +960,56 @@ def download_step03(round_id, filename):
     mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if ext == '.xlsx' \
            else 'application/octet-stream'
     return send_file(full_path, mimetype=mime, as_attachment=True, download_name=display)
+
+
+@app.route('/round/<int:round_id>/step03/download_all_zip')
+def download_step03_all_zip(round_id):
+    """Step03 전체 서류를 ZIP으로 묶어서 다운로드."""
+    import zipfile
+    import io
+    from datetime import datetime
+
+    round_obj = db.get_round(round_id)
+    if not round_obj:
+        abort(404)
+
+    output_dir = os.path.join(OUTPUT_FOLDER, str(round_id), 'step03')
+
+    # ZIP 파일을 메모리에 생성
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # output_dir의 모든 파일을 ZIP에 추가
+        if os.path.exists(output_dir):
+            for filename in os.listdir(output_dir):
+                file_path = os.path.join(output_dir, filename)
+                if os.path.isfile(file_path):
+                    # 표시용 파일명 매핑
+                    display_map = {
+                        'exercise_detail.xlsx': '행사내역.xlsx',
+                        'sunabuiuiseo.hwpx': '수납의뢰서.hwpx',
+                        'yeongsujeung.hwpx': '영수증.hwpx',
+                    }
+                    display_name = display_map.get(filename, filename)
+
+                    # bogwan 파일은 가격 포함
+                    if filename.startswith('bogwan_'):
+                        price_str = filename.replace('bogwan_', '').replace('.hwpx', '')
+                        display_name = f'보관증명서_{price_str}원.hwpx'
+
+                    zf.write(file_path, display_name)
+
+    buf.seek(0)
+
+    # ZIP 파일명: Step03_납입서류_회차명_날짜.zip
+    today = datetime.now().strftime('%Y%m%d')
+    zip_filename = f"Step03_납입서류_{round_obj['name']}_{today}.zip"
+
+    return send_file(
+        buf,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=zip_filename
+    )
 
 
 # ── Step 03-3 (의무보유) routes ────────────────────────────────────────────────
@@ -1865,7 +1939,7 @@ def step06_generate(round_id):
             # 생성 이력 저장
             zip_filename = os.path.basename(result['zip_path'])
             rel_path = os.path.relpath(result['zip_path'], OUTPUT_FOLDER)
-            db.add_step_output(round_id, 'step06', zip_filename, rel_path)
+            db.save_step_output(round_id, 'step06', zip_filename, rel_path)
 
             return jsonify(
                 success=True,

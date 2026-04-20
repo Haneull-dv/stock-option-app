@@ -35,7 +35,8 @@ def generate_hwpx(template_path: str, output_path: str, replacements: dict) -> s
             if item.filename in ('Contents/section0.xml', 'Preview/PrvText.txt'):
                 data = _replace_in_xml(data, replacements)
 
-            zout.writestr(item, data)
+            # 원본 압축 방식 보존 (mimetype, version.xml은 압축하면 안됨)
+            zout.writestr(item, data, compress_type=item.compress_type)
 
     with open(output_path, 'wb') as f:
         f.write(buf.getvalue())
