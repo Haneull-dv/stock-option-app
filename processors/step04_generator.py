@@ -44,15 +44,15 @@ def generate_step04_documents(round_id, applicants, output_dir, templates_dir):
         {'name': '법인인감증명서'}
     ])
 
-    # ── 2. 주주총회의사록 + 조정내역서 통합 (모든 발행가액) ──
+    # ── 2. 주주총회의사록 + 조정내역서 통합 (발행가액 + 부여일 기반) ──
     meeting_pdf_path = os.path.join(output_dir, '주주총회의사록_및_조정내역서_전체.pdf')
-    copy_all_meeting_minutes(templates_dir, meeting_pdf_path)
+    copy_all_meeting_minutes(applicants, meeting_pdf_path)
     print(f"주주총회의사록 파일 존재 여부: {os.path.exists(meeting_pdf_path)}, 경로: {meeting_pdf_path}")
     if os.path.exists(meeting_pdf_path):
         results['files'].append({
             'name': '주주총회의사록 및 조정내역서 (전체)',
             'path': meeting_pdf_path,
-            'note': '📍 원본대조필 수 법인인감 날인 및 접어서 각장 간인 필요\n📍 조정내역서는 회사명판과 법인인감 날인 필요'
+            'note': '📍 원본대조필 후 법인인감 날인 및 접어서 각장 간인 필요\n📍 조정내역서는 회사명판과 법인인감 날인 필요'
         })
         print(f"  → files 배열에 추가됨")
 
@@ -64,7 +64,7 @@ def generate_step04_documents(round_id, applicants, output_dir, templates_dir):
         results['files'].append({
             'name': '정관',
             'path': articles_dst,
-            'note': '📍 원본대조필 수 법인인감 날인 및 접어서 각장 간인 필요'
+            'note': '📍 원본대조필 후 법인인감 날인 및 접어서 각장 간인 필요'
         })
         print(f"  → files 배열에 추가됨")
 
@@ -89,7 +89,7 @@ def generate_step04_documents(round_id, applicants, output_dir, templates_dir):
         results['files'].append({
             'name': f'주식매수선택권 부여계약서 ({matched_count}명)',
             'path': contract_pdf_path,
-            'note': '📍 원본대조필 수 법인인감 날인 및 접어서 각장 간인 필요'
+            'note': '📍 원본대조필 후 법인인감 날인 및 접어서 각장 간인 필요'
         })
         print(f"  → files 배열에 추가됨")
 
@@ -102,25 +102,29 @@ def generate_step04_documents(round_id, applicants, output_dir, templates_dir):
     return results
 
 
-def copy_all_meeting_minutes(templates_dir, output_path):
+def copy_all_meeting_minutes(applicants, output_path):
     """
-    모든 발행가액의 주주총회의사록 + 조정내역서를 하나의 PDF로 합침
+    신청자들의 (발행가액, 부여일) 기반 주주총회의사록 + 조정산식 합본
 
-    templates_step05/price_specific/{가액}/(붙임4) 주주총회의사록 {가액}원/ 폴더들에서
-    모든 PDF 파일을 가져와서 합본
+    Args:
+        applicants: 신청자 리스트 (exercise_price, grant_date 포함)
+        output_path: 출력 PDF 경로
     """
-    price_dirs = glob.glob(
-        os.path.join(templates_dir, '..', 'templates_step05', 'price_specific', '*', '(붙임4) 주주총회의사록*')
-    )
+    from processors.shareholder_meeting_matcher import get_all_required_meeting_files
 
-    all_pdfs = []
-    for price_dir in sorted(price_dirs):
-        pdf_files = glob.glob(os.path.join(price_dir, '*.pdf'))
-        all_pdfs.extend(sorted(pdf_files))
+    # 필요한 파일들 찾기
+    required_files = get_all_required_meeting_files(applicants)
 
-    if not all_pdfs:
-        print("주주총회의사록 PDF 파일을 찾을 수 없습니다.")
+    if not required_files:
+        print("  ⚠️ 주주총회의사록/조정산식 파일을 찾을 수 없습니다.")
         return
+
+    # 모든 파일을 하나의 리스트로
+    all_pdfs = []
+    for (price, grant_date), files in sorted(required_files.items()):
+        all_pdfs.extend(files)
+
+    print(f"\n[PDF 합본 시작] 총 {len(all_pdfs)}개 파일")
 
     # PDF 합본
     writer = PdfWriter()
@@ -129,55 +133,82 @@ def copy_all_meeting_minutes(templates_dir, output_path):
             reader = PdfReader(pdf_path)
             for page in reader.pages:
                 writer.add_page(page)
+            print(f"  ✓ {os.path.basename(pdf_path)}")
         except Exception as e:
-            print(f"PDF 추가 실패: {pdf_path}, {e}")
+            print(f"  ✗ PDF 추가 실패: {os.path.basename(pdf_path)}, {e}")
 
     with open(output_path, 'wb') as f:
         writer.write(f)
 
-    print(f"주주총회의사록 합본 완료: {len(all_pdfs)}개 파일")
+    print(f"\n✓ 주주총회의사록 합본 완료: {len(all_pdfs)}개 파일 → {output_path}")
 
 
 def merge_grant_contracts(templates_dir, applicants, output_path):
     """
-    신청자별 부여계약서 매칭 후 PDF 합본
+    신청자별 부여계약서 매칭 후 PDF 합본 (부여일 기반)
 
     Args:
         templates_dir: templates_step04 폴더
-        applicants: 신청자 리스트 (sort_order 순)
+        applicants: 신청자 리스트 (sort_order 순, grant_date 포함)
         output_path: 출력 PDF 경로
 
     Returns:
         int: 매칭된 계약서 개수
     """
-    contract_dir = os.path.join(templates_dir, '부여계약서')
-    if not os.path.exists(contract_dir):
-        print("부여계약서 폴더를 찾을 수 없습니다.")
+    # 부여계약서 폴더는 루트에 위치
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    contract_base_dir = os.path.join(project_root, '부여계약서')
+
+    if not os.path.exists(contract_base_dir):
+        print(f"부여계약서 폴더를 찾을 수 없습니다: {contract_base_dir}")
         return 0
 
-    # 모든 부여계약서 파일 목록
-    contract_files = glob.glob(os.path.join(contract_dir, '*.pdf'))
-
-    # 신청자별 계약서 매칭
+    # 신청자별 계약서 매칭 (부여일 + 신청자명)
     matched_contracts = []
     unmatched_applicants = []
 
     for applicant in applicants:
         name = applicant['name']
+        grant_date = applicant.get('grant_date', '').strip()
         matched = False
 
-        for contract_path in contract_files:
-            filename = os.path.basename(contract_path)
-            if name in filename:
-                matched_contracts.append((applicant, contract_path))
-                matched = True
-                break
+        if not grant_date:
+            print(f"  ⚠️ {name}: 부여일 정보 없음")
+            unmatched_applicants.append(f"{name} (부여일 없음)")
+            continue
+
+        # 부여일 폴더에서 파일 찾기
+        # grant_date 형식: YYYY-MM-DD 또는 YYMMDD 등 다양할 수 있으므로 여러 패턴 시도
+        possible_folders = [
+            grant_date,  # 2020-03-27
+            grant_date.replace('-', ' '),  # 2020 03 27 (공백 구분)
+            grant_date.replace('-', ''),  # 20200327
+            grant_date[:6] if len(grant_date) >= 6 else grant_date,  # 200327
+        ]
+
+        for folder_pattern in possible_folders:
+            grant_folder = os.path.join(contract_base_dir, folder_pattern)
+            if os.path.exists(grant_folder):
+                # 해당 폴더에서 신청자명이 포함된 PDF 찾기
+                contract_files = glob.glob(os.path.join(grant_folder, '*.pdf'))
+                for contract_path in contract_files:
+                    filename = os.path.basename(contract_path)
+                    if name in filename:
+                        matched_contracts.append((applicant, contract_path))
+                        matched = True
+                        print(f"  ✓ {name}: {folder_pattern}/{filename}")
+                        break
+                if matched:
+                    break
 
         if not matched:
-            unmatched_applicants.append(name)
+            unmatched_applicants.append(f"{name} (부여일: {grant_date})")
+            print(f"  ✗ {name}: 부여일 {grant_date} 폴더에서 파일을 찾을 수 없음")
 
     if unmatched_applicants:
-        print(f"⚠️ 부여계약서를 찾을 수 없는 신청자: {', '.join(unmatched_applicants)}")
+        print(f"\n⚠️ 부여계약서를 찾을 수 없는 신청자 ({len(unmatched_applicants)}명):")
+        for name in unmatched_applicants:
+            print(f"  - {name}")
 
     if not matched_contracts:
         print("매칭된 부여계약서가 없습니다.")

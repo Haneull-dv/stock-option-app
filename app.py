@@ -399,7 +399,8 @@ def import_confirm(round_id):
             price, qty = None, None
         broker  = str(ap.get('broker') or '').strip()
         account = str(ap.get('account_number') or '').strip()
-        db.add_applicant(round_id, name, price, qty, broker, account)
+        grant_date = str(ap.get('grant_date') or '').strip() or None
+        db.add_applicant(round_id, name, price, qty, broker, account, grant_date)
         added += 1
 
     return jsonify(success=True, message=f'{added}명 추가 완료', added=added)
@@ -835,7 +836,7 @@ def step03_generate(round_id):
     # 1. 행사내역 엑셀
     if 'excel' in doc_types:
         try:
-            fname = '주식납입금 행사내역.xlsx'
+            fname = '주식매수선택권 행사내역.xlsx'
             excel_path = os.path.join(output_dir, fname)
             generate_exercise_excel(
                 round_obj['name'],
@@ -935,6 +936,120 @@ def step03_generate(round_id):
             except Exception as e:
                 results.append({'name': f'보관증명서_{price:,}원.hwpx', 'success': False, 'message': str(e)})
 
+    # 5. 행사청구서 PDF 합본 (Step01에서 생성된 것 복사)
+    if 'haengsa_cheonggu' in doc_types:
+        try:
+            step01_dir = os.path.join(OUTPUT_FOLDER, str(round_id), 'step01')
+            src = os.path.join(step01_dir, 'application_merged.pdf')
+            fname = '주식매수선택권 행사청구서.pdf'
+            dest = os.path.join(output_dir, fname)
+
+            if os.path.exists(src):
+                import shutil
+                shutil.copy2(src, dest)
+                db.save_step_output(round_id, 'step03', fname, dest)
+                results.append({'name': fname, 'filename': fname, 'success': True})
+            else:
+                results.append({'name': fname, 'success': False, 'message': 'Step01에서 생성된 행사청구서를 찾을 수 없습니다.'})
+        except Exception as e:
+            results.append({'name': '행사청구서', 'success': False, 'message': str(e)})
+
+    # 6. 정관 (공용 파일 복사)
+    if 'jeonggwan' in doc_types:
+        try:
+            templates_common = os.path.join(BASE_DIR, 'templates_common')
+            # 가장 최신 정관 파일 찾기
+            jeonggwan_files = [f for f in os.listdir(templates_common) if f.startswith('정관') and f.endswith('.pdf')]
+            if jeonggwan_files:
+                src = os.path.join(templates_common, jeonggwan_files[0])
+                fname = jeonggwan_files[0]
+                dest = os.path.join(output_dir, fname)
+
+                import shutil
+                shutil.copy2(src, dest)
+                db.save_step_output(round_id, 'step03', fname, dest)
+                results.append({'name': fname, 'filename': fname, 'success': True})
+            else:
+                results.append({'name': '정관', 'success': False, 'message': 'templates_common에서 정관 파일을 찾을 수 없습니다.'})
+        except Exception as e:
+            results.append({'name': '정관', 'success': False, 'message': str(e)})
+
+    # 7. 주주총회의사록 및 조정산식 (발행가액별 + 부여일 필터링 → 폴더 + ZIP)
+    if 'jusimchong' in doc_types:
+        try:
+            import shutil
+            import zipfile
+
+            # 발행가액별 신청자 그룹화 및 부여일 수집
+            price_grant_dates = {}
+            for ap in applicants:
+                price = ap.get('exercise_price')
+                grant_date = ap.get('grant_date')
+                if price and grant_date:
+                    if price not in price_grant_dates:
+                        price_grant_dates[price] = set()
+                    price_grant_dates[price].add(grant_date)
+
+            source_base = os.path.join(BASE_DIR, '주주총회의사록 및 조정산식')
+            dest_base = os.path.join(output_dir, '주주총회의사록 및 조정산식')
+
+            # 폴더에 파일 복사
+            copied_count = 0
+            for price, grant_dates in sorted(price_grant_dates.items()):
+                # 발행가액별 폴더 생성
+                price_folder = os.path.join(dest_base, f'{price}원')
+                os.makedirs(price_folder, exist_ok=True)
+
+                # 원본 폴더 확인
+                src_price_folder = os.path.join(source_base, str(price))
+                if not os.path.exists(src_price_folder):
+                    continue
+
+                # 부여일 매칭 파일 복사
+                for grant_date in grant_dates:
+                    # grant_date: "YYYY-MM-DD" → "YYYYMMDD"
+                    try:
+                        date_prefix = grant_date.replace('-', '')  # "20211101"
+                    except:
+                        continue
+
+                    # 해당 부여일로 시작하는 모든 PDF 복사
+                    for filename in os.listdir(src_price_folder):
+                        if filename.startswith(date_prefix) and filename.endswith('.pdf'):
+                            src_file = os.path.join(src_price_folder, filename)
+                            dest_file = os.path.join(price_folder, filename)
+                            shutil.copy2(src_file, dest_file)
+                            copied_count += 1
+
+            if copied_count > 0:
+                # 개별 다운로드용 ZIP 파일 생성
+                zip_fname = '주주총회의사록 및 조정산식.zip'
+                zip_path = os.path.join(output_dir, zip_fname)
+
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for root, dirs, files in os.walk(dest_base):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            # ZIP 내부 경로: 주주총회의사록 및 조정산식/4130원/파일명.pdf
+                            arc_path = os.path.join('주주총회의사록 및 조정산식',
+                                                   os.path.relpath(file_path, dest_base))
+                            zf.write(file_path, arc_path)
+
+                db.save_step_output(round_id, 'step03', zip_fname, zip_path)
+                results.append({
+                    'name': f'주주총회의사록 및 조정산식 ({copied_count}개 파일)',
+                    'filename': zip_fname,
+                    'success': True
+                })
+            else:
+                results.append({
+                    'name': '주주총회의사록 및 조정산식',
+                    'success': False,
+                    'message': '매칭되는 파일이 없습니다.'
+                })
+        except Exception as e:
+            results.append({'name': '주주총회의사록 및 조정산식', 'success': False, 'message': str(e)})
+
     return jsonify(success=True, data=results)
 
 
@@ -978,12 +1093,17 @@ def download_step03_all_zip(round_id):
     # ZIP 파일을 메모리에 생성
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # output_dir의 모든 파일을 ZIP에 추가
+        # output_dir의 모든 파일 및 폴더를 ZIP에 추가
         if os.path.exists(output_dir):
             for filename in os.listdir(output_dir):
                 file_path = os.path.join(output_dir, filename)
+
                 if os.path.isfile(file_path):
-                    # 표시용 파일명 매핑
+                    # 주주총회의사록.zip은 건너뛰기 (폴더로 포함됨)
+                    if filename == '주주총회의사록 및 조정산식.zip':
+                        continue
+
+                    # 파일인 경우
                     display_map = {
                         'exercise_detail.xlsx': '행사내역.xlsx',
                         'sunabuiuiseo.hwpx': '수납의뢰서.hwpx',
@@ -997,6 +1117,15 @@ def download_step03_all_zip(round_id):
                         display_name = f'보관증명서_{price_str}원.hwpx'
 
                     zf.write(file_path, display_name)
+
+                elif os.path.isdir(file_path):
+                    # 폴더인 경우 (주주총회의사록 등) - 재귀적으로 추가
+                    for root, dirs, files in os.walk(file_path):
+                        for file in files:
+                            full_path = os.path.join(root, file)
+                            # ZIP 내부 경로: 주주총회의사록 및 조정산식/4130원/파일명.pdf
+                            arc_path = os.path.relpath(full_path, output_dir)
+                            zf.write(full_path, arc_path)
 
     buf.seek(0)
 
@@ -1435,7 +1564,9 @@ def step05_generate(round_id):
 
     # ─────────────────────────────────────────────────────────────
     # OCR 캐싱: 이미 추출된 데이터는 DB에서 가져오고, 없으면 OCR 실행
+    # 메모리 절약을 위해 소규모 배치로 처리
     # ─────────────────────────────────────────────────────────────
+    import gc
     from processors.ocr_reader import extract_account_and_broker
 
     print(f"\n[OCR 데이터 준비 중...]")
@@ -1444,57 +1575,76 @@ def step05_generate(round_id):
     ocr_account_success = 0
     ocr_account_fail = 0
 
-    for ap in applicants:
-        ap_id = ap['id']
-        ap_name = ap.get('name', '?')
+    # 배치 크기 설정 (메모리 절약을 위해 작은 배치로 처리)
+    BATCH_SIZE = 3
+    total_applicants = len(applicants)
 
-        # 주민번호: DB에 없으면 OCR
-        if not ap.get('rrn'):
-            id_docs = db.get_documents_for_applicant_ids([ap_id], 'id_copy')
-            if id_docs:
-                try:
-                    rrn_map = extract_rrn_batch(id_docs)
-                    rrn = rrn_map.get(ap_id)
-                    if rrn:
-                        db.update_applicant_ocr(ap_id, rrn=rrn)
-                        ap['rrn'] = rrn
-                        ocr_rrn_success += 1
-                        print(f"  [OCR] {ap_name}: 주민번호 추출 성공")
-                    else:
+    for batch_start in range(0, total_applicants, BATCH_SIZE):
+        batch_end = min(batch_start + BATCH_SIZE, total_applicants)
+        batch = applicants[batch_start:batch_end]
+
+        print(f"\n  ── 배치 {batch_start+1}~{batch_end}/{total_applicants} 처리 중 ──")
+
+        for ap in batch:
+            ap_id = ap['id']
+            ap_name = ap.get('name', '?')
+
+            # 주민번호: DB에 없으면 OCR
+            if not ap.get('rrn'):
+                id_docs = db.get_documents_for_applicant_ids([ap_id], 'id_copy')
+                if id_docs:
+                    try:
+                        rrn_map = extract_rrn_batch(id_docs)
+                        rrn = rrn_map.get(ap_id)
+                        if rrn:
+                            db.update_applicant_ocr(ap_id, rrn=rrn)
+                            ap['rrn'] = rrn
+                            ocr_rrn_success += 1
+                            print(f"  [OCR] {ap_name}: 주민번호 추출 성공")
+                        else:
+                            ocr_rrn_fail += 1
+                            print(f"  [OCR] {ap_name}: 주민번호 추출 실패")
+                    except Exception as e:
                         ocr_rrn_fail += 1
-                        print(f"  [OCR] {ap_name}: 주민번호 추출 실패")
-                except Exception as e:
-                    ocr_rrn_fail += 1
-                    print(f"  [OCR] {ap_name}: 주민번호 추출 오류 - {e}")
-        else:
-            print(f"  [캐시] {ap_name}: 주민번호 이미 있음 ({ap.get('rrn')})")
+                        print(f"  [OCR] {ap_name}: 주민번호 추출 오류 - {e}")
+            else:
+                print(f"  [캐시] {ap_name}: 주민번호 이미 있음 ({ap.get('rrn')})")
 
-        # 계좌번호/증권사: DB에 없으면 OCR
-        if not ap.get('ocr_account'):
-            acct_docs = db.get_documents_for_applicant_ids([ap_id], 'account_copy')
-            if acct_docs:
-                try:
-                    result = extract_account_and_broker(acct_docs[0]['file_path'])
-                    account = result.get('account', '')
-                    broker = result.get('broker', '')
-                    if account or broker:
-                        db.update_applicant_ocr(ap_id, ocr_account=account, broker=broker)
-                        ap['ocr_account'] = account
-                        ap['broker'] = broker
-                        ocr_account_success += 1
-                        print(f"  [OCR] {ap_name}: 계좌번호/증권사 추출 성공 ({broker} / {account})")
-                    else:
+            # 계좌번호/증권사: DB에 없으면 OCR
+            if not ap.get('ocr_account'):
+                acct_docs = db.get_documents_for_applicant_ids([ap_id], 'account_copy')
+                if acct_docs:
+                    try:
+                        result = extract_account_and_broker(acct_docs[0]['file_path'])
+                        account = result.get('account', '')
+                        broker = result.get('broker', '')
+                        if account or broker:
+                            db.update_applicant_ocr(ap_id, ocr_account=account, broker=broker)
+                            ap['ocr_account'] = account
+                            ap['broker'] = broker
+                            ocr_account_success += 1
+                            print(f"  [OCR] {ap_name}: 계좌번호/증권사 추출 성공 ({broker} / {account})")
+                        else:
+                            ocr_account_fail += 1
+                            print(f"  [OCR] {ap_name}: 계좌번호/증권사 추출 실패")
+                    except Exception as e:
                         ocr_account_fail += 1
-                        print(f"  [OCR] {ap_name}: 계좌번호/증권사 추출 실패")
-                except Exception as e:
-                    ocr_account_fail += 1
-                    print(f"  [OCR] {ap_name}: 계좌번호/증권사 추출 오류 - {e}")
-        else:
-            print(f"  [캐시] {ap_name}: 계좌정보 이미 있음 ({ap.get('broker')} / {ap.get('ocr_account')})")
+                        print(f"  [OCR] {ap_name}: 계좌번호/증권사 추출 오류 - {e}")
+            else:
+                print(f"  [캐시] {ap_name}: 계좌정보 이미 있음 ({ap.get('broker')} / {ap.get('ocr_account')})")
+
+        # 배치 처리 후 메모리 정리
+        if batch_end < total_applicants:
+            print(f"  [메모리 정리 중...]")
+            gc.collect()
 
     print(f"\n[OCR 요약]")
     print(f"  - 주민번호: 성공 {ocr_rrn_success}명, 실패 {ocr_rrn_fail}명")
     print(f"  - 계좌정보: 성공 {ocr_account_success}명, 실패 {ocr_account_fail}명")
+
+    # OCR 완료 후 메모리 정리
+    print(f"\n[OCR 완료 - 메모리 정리 중...]")
+    gc.collect()
 
     # ─────────────────────────────────────────────────────────────
     # 발행가액별 ZIP 생성

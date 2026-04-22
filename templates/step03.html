@@ -92,6 +92,15 @@
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
         <input type="checkbox" id="chk-bogwan" checked> 보관증명서 (행사가액별 각 1부, .hwpx)
       </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="chk-haengsa" checked> 행사청구서 (.pdf)
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="chk-jeonggwan" checked> 정관 (.pdf)
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="chk-jusimchong" checked> 주주총회의사록 및 조정산식 (발행가액별 폴더)
+      </label>
     </div>
   </div>
 
@@ -107,28 +116,6 @@
   </div>
   <div id="result-list" class="download-list"></div>
 </div>
-
-{% if outputs %}
-<div class="section-card">
-  <div class="section-card-header">
-    <h2 class="section-card-title">이전 생성 결과</h2>
-    <a href="/round/{{ round.id }}/step03/download_all_zip"
-       class="btn btn-primary btn-sm"
-       style="margin-left:auto;">
-      📦 전체 ZIP 다운로드
-    </a>
-  </div>
-  <div class="download-list">
-    {% for out in outputs %}
-    <div class="download-item">
-      <div class="download-item-name">{{ out.output_filename }}</div>
-      <a href="/round/{{ round.id }}/step03/download/{{ out.output_filename }}"
-         class="btn btn-success btn-sm" download>&#11123; 다운로드</a>
-    </div>
-    {% endfor %}
-  </div>
-</div>
-{% endif %}
 
 <script>
 const ROUND_ID = {{ round.id }};
@@ -161,10 +148,13 @@ async function generateDocs() {
   }
 
   const docTypes = [];
-  if (document.getElementById('chk-excel').checked)   docTypes.push('excel');
-  if (document.getElementById('chk-sunabu').checked)  docTypes.push('sunabuiuiseo');
-  if (document.getElementById('chk-yeongsu').checked) docTypes.push('yeongsujeung');
-  if (document.getElementById('chk-bogwan').checked)  docTypes.push('bogwan');
+  if (document.getElementById('chk-excel').checked)     docTypes.push('excel');
+  if (document.getElementById('chk-sunabu').checked)    docTypes.push('sunabuiuiseo');
+  if (document.getElementById('chk-yeongsu').checked)   docTypes.push('yeongsujeung');
+  if (document.getElementById('chk-bogwan').checked)    docTypes.push('bogwan');
+  if (document.getElementById('chk-haengsa').checked)   docTypes.push('haengsa_cheonggu');
+  if (document.getElementById('chk-jeonggwan').checked) docTypes.push('jeonggwan');
+  if (document.getElementById('chk-jusimchong').checked) docTypes.push('jusimchong');
 
   if (!docTypes.length) {
     showToast('생성할 서류를 하나 이상 선택하세요', 'warning');
