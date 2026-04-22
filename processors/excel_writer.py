@@ -80,7 +80,7 @@ def generate_exercise_excel(round_name: str, exercise_date: str,
     ws.row_dimensions[1].height = 28
 
     # 헤더
-    headers = ['이름', '행사가액(원)', '수량(주)', '납입금액(원)', '증권사', '계좌번호', '비고']
+    headers = ['이름', '구분', '의무보유', '부여일', '행사가액(원)', '행사수량', '납입금액(원)']
     for ci, h in enumerate(headers, 1):
         _cell(ws, 2, ci, h, bold=True, align='center')
     ws.row_dimensions[2].height = 20
@@ -95,12 +95,12 @@ def generate_exercise_excel(round_name: str, exercise_date: str,
         amt   = price * qty
 
         _cell(ws, row, 1, ap.get('name', ''))
-        _cell(ws, row, 2, price,  align='right', number_format='#,##0')
-        _cell(ws, row, 3, qty,    align='right', number_format='#,##0')
-        _cell(ws, row, 4, amt,    align='right', number_format='#,##0')
-        _cell(ws, row, 5, ap.get('broker', '') or '')
-        _cell(ws, row, 6, ap.get('account_number', '') or '')
-        _cell(ws, row, 7, '')
+        _cell(ws, row, 2, '직원')  # 구분
+        _cell(ws, row, 3, '')  # 의무보유 (빈칸)
+        _cell(ws, row, 4, ap.get('grant_date', '') or '')
+        _cell(ws, row, 5, price,  align='right', number_format='#,##0')
+        _cell(ws, row, 6, qty,    align='right', number_format='#,##0')
+        _cell(ws, row, 7, amt,    align='right', number_format='#,##0')
         ws.row_dimensions[row].height = 18
 
         if price not in price_totals:
@@ -140,13 +140,13 @@ def generate_exercise_excel(round_name: str, exercise_date: str,
     _cell(ws, row, 3, total_amt, bold=True, align='right', number_format='#,##0')
 
     # 열 너비
-    ws.column_dimensions['A'].width = 12
-    ws.column_dimensions['B'].width = 14
-    ws.column_dimensions['C'].width = 12
-    ws.column_dimensions['D'].width = 16
-    ws.column_dimensions['E'].width = 14
-    ws.column_dimensions['F'].width = 22
-    ws.column_dimensions['G'].width = 12
+    ws.column_dimensions['A'].width = 14   # 이름 / 행사가액(집계)
+    ws.column_dimensions['B'].width = 12   # 구분 / 수량(집계)
+    ws.column_dimensions['C'].width = 15   # 의무보유 / 납입금액(집계)
+    ws.column_dimensions['D'].width = 12   # 부여일
+    ws.column_dimensions['E'].width = 14   # 행사가액
+    ws.column_dimensions['F'].width = 12   # 수량
+    ws.column_dimensions['G'].width = 15   # 납입금액
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wb.save(output_path)

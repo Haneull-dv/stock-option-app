@@ -48,6 +48,7 @@ def init_db():
             submit_token TEXT UNIQUE,
             doc_submitted INTEGER DEFAULT 0,
             rrn TEXT,
+            grant_date TEXT,
             ocr_account TEXT,
             ocr_extracted_at TEXT,
             created_at TEXT DEFAULT (datetime('now', 'localtime')),
@@ -159,6 +160,14 @@ def init_db():
             FOREIGN KEY(round_id) REFERENCES rounds(id) ON DELETE CASCADE
         );
     """)
+
+    # Migration: grant_date 칼럼 추가 (이미 있으면 무시)
+    try:
+        c.execute("ALTER TABLE applicants ADD COLUMN grant_date TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # 이미 칼럼이 있음
+
     conn.commit()
     conn.close()
 
@@ -274,7 +283,7 @@ def get_applicant_by_token(token):
     return dict(row) if row else None
 
 
-def add_applicant(round_id, name, exercise_price, quantity, broker, account_number):
+def add_applicant(round_id, name, exercise_price, quantity, broker, account_number, grant_date=None):
     conn = get_db()
     c = conn.cursor()
     max_order = c.execute(
@@ -284,9 +293,9 @@ def add_applicant(round_id, name, exercise_price, quantity, broker, account_numb
     token = secrets.token_urlsafe(16)
     c.execute(
         """INSERT INTO applicants
-           (round_id, sort_order, name, exercise_price, quantity, broker, account_number, submit_token)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        (round_id, max_order + 1, name, exercise_price, quantity, broker, account_number, token)
+           (round_id, sort_order, name, exercise_price, quantity, broker, account_number, submit_token, grant_date)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (round_id, max_order + 1, name, exercise_price, quantity, broker, account_number, token, grant_date)
     )
     applicant_id = c.lastrowid
     conn.commit()

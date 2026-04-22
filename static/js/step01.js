@@ -731,7 +731,7 @@ async function confirmImport() {
   if (!_importedData.length) return;
 
   const modeEl = document.querySelector('input[name="import-mode"]:checked');
-  const mode = modeEl ? modeEl.value : 'append';
+  const mode = modeEl ? modeEl.value : 'replace';
 
   try {
     const res = await apiCall(`/round/${ROUND_ID}/applicants/import-confirm`, 'POST', {

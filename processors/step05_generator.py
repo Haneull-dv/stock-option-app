@@ -20,6 +20,7 @@ Step05 예탁원 신주발행의뢰 문서 자동 생성.
 """
 import os
 import shutil
+import glob
 from datetime import datetime
 from processors.hwpx_writer import generate_hwpx
 from processors.pdf_merger import merge_pdfs_in_order
@@ -139,7 +140,7 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             errors.append(f"붙임3: {e}")
 
         # ────────────────────────────────────────────────────────
-        # 7. 붙임4: 주주총회의사록 폴더 복사
+        # 7. 붙임4: 주주총회의사록 폴더 복사 (기존 방식)
         # ────────────────────────────────────────────────────────
         try:
             print(f"    [7/12] 붙임4: 주주총회의사록 폴더 복사 중...")
@@ -149,6 +150,8 @@ def generate_step05_zip(round_obj, applicants, price, config, attachment8_file, 
             print(f"      OK 완료 ({file_count}개 파일)")
         except Exception as e:
             print(f"      FAIL 실패: {e}")
+            import traceback
+            traceback.print_exc()
             errors.append(f"붙임4: {e}")
 
         # ────────────────────────────────────────────────────────
@@ -338,7 +341,8 @@ def _generate_registration_confirmation(work_dir, price, applicants, config, rou
     price_to_round_number = {
         1250: 15,
         2000: 16,
-        4130: 17
+        4130: 17,
+        5150: 18
     }
     round_number = price_to_round_number.get(price, '')
 
@@ -439,14 +443,75 @@ def _copy_attachment3(price_folder):
 
 
 def _copy_attachment4(price_folder, price):
-    """붙임4: 주주총회의사록 폴더 복사."""
+    """붙임4: 주주총회의사록 폴더 복사 (기존 방식 - 안전)."""
     src_folder = os.path.join(TEMPLATES_DIR, 'price_specific', str(price), f'(붙임4) 주주총회의사록 {price}원')
     dest_folder = os.path.join(price_folder, f'(붙임4) 주주총회의사록 {price}원')
 
     if os.path.isdir(src_folder):
         copy_folder_contents(src_folder, dest_folder)
     else:
-        raise FileNotFoundError(f"붙임4 폴더를 찾을 수 없습니다: {src_folder}")
+        # 폴더가 없으면 빈 폴더라도 생성
+        os.makedirs(dest_folder, exist_ok=True)
+        print(f"      ⚠️ 템플릿 폴더 없음: {src_folder}")
+
+    return dest_folder
+
+
+def _copy_attachment4_new(price_folder, price, applicants):
+    """
+    붙임4: 주주총회의사록 폴더 생성 (발행가액 + 부여일 기반 - 새 방식)
+
+    Args:
+        price_folder: 출력 폴더
+        price: 발행가액
+        applicants: 해당 발행가액의 신청자 리스트
+
+    Returns:
+        str: 생성된 폴더 경로
+    """
+    try:
+        from processors.shareholder_meeting_matcher import get_shareholder_meeting_folder
+    except ImportError as e:
+        print(f"      ⚠️ shareholder_meeting_matcher import 실패: {e}")
+        # 기존 방식으로 폴백
+        return _copy_attachment4(price_folder, price)
+
+    dest_folder = os.path.join(price_folder, f'(붙임4) 주주총회의사록 {price}원')
+    os.makedirs(dest_folder, exist_ok=True)
+
+    # 해당 발행가액의 모든 부여일 찾기
+    grant_dates = set()
+    for ap in applicants:
+        if ap.get('exercise_price') == price:
+            grant_date = ap.get('grant_date', '').strip().replace('-', '').replace(' ', '')
+            if grant_date:
+                grant_dates.add(grant_date)
+
+    if not grant_dates:
+        print(f"      ⚠️ {price}원: 부여일 정보 없음, 기존 방식 사용")
+        return _copy_attachment4(price_folder, price)
+
+    # 각 부여일에 해당하는 파일 복사
+    base_folder = get_shareholder_meeting_folder()
+    price_src_folder = os.path.join(base_folder, str(price))
+
+    if not os.path.exists(price_src_folder):
+        print(f"      ⚠️ 주주총회의사록 폴더 없음: {price_src_folder}, 기존 방식 사용")
+        return _copy_attachment4(price_folder, price)
+
+    copied_count = 0
+    for grant_date in sorted(grant_dates):
+        pattern = os.path.join(price_src_folder, f'{grant_date}*.pdf')
+        files = glob.glob(pattern)
+        for src_file in files:
+            dest_file = os.path.join(dest_folder, os.path.basename(src_file))
+            shutil.copy2(src_file, dest_file)
+            copied_count += 1
+            print(f"        - {os.path.basename(src_file)}")
+
+    if copied_count == 0:
+        print(f"      ⚠️ {price}원: 부여일 {', '.join(grant_dates)}에 해당하는 파일 없음, 기존 방식 사용")
+        return _copy_attachment4(price_folder, price)
 
     return dest_folder
 

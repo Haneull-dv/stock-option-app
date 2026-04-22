@@ -427,14 +427,15 @@ def _generate_other_documents(round_id, config, work_folder, warnings):
     else:
         warnings.append("재직증명서 폴더가 업로드되지 않았습니다.")
 
-    # 2. 주식매수선택권 부여계약서 폴더
-    contracts_src = os.path.join(STEP04_TEMPLATES_DIR, '부여계약서')
+    # 2. 주식매수선택권 부여계약서 폴더 (프로젝트 루트)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    contracts_src = os.path.join(project_root, '부여계약서')
     if os.path.exists(contracts_src):
         contracts_dest = os.path.join(dest_folder, '주식매수선택권부여계약서')
         shutil.copytree(contracts_src, contracts_dest)
-        print(f"  ✓ 주식매수선택권부여계약서 폴더 복사 완료")
+        print(f"  ✓ 주식매수선택권부여계약서 폴더 복사 완료 (from {contracts_src})")
     else:
-        warnings.append("주식매수선택권부여계약서 폴더를 찾을 수 없습니다.")
+        warnings.append(f"주식매수선택권부여계약서 폴더를 찾을 수 없습니다: {contracts_src}")
 
     # 3. 법인인감증명서
     cert_src = os.path.join(COMMON_TEMPLATES_DIR, '법인인감증명서.pdf')
