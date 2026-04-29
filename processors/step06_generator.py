@@ -69,7 +69,11 @@ def generate_step06_zip(round_obj, config, output_base_dir):
     try:
         # 1. 정관
         print("[1/13] 정관 복사 중...")
-        _copy_articles(work_folder)
+        try:
+            _copy_articles(work_folder)
+        except Exception as e:
+            warnings.append(f"정관 복사 실패: {e}")
+            print(f"  ⚠️ 정관 파일을 찾을 수 없습니다 - 건너뜀")
 
         # 2. 상장수수료 납부영수증
         print("[2/13] 상장수수료 납부영수증 복사 중...")
@@ -77,49 +81,91 @@ def generate_step06_zip(round_obj, config, output_base_dir):
             _copy_uploaded_file(config['listing_fee_receipt'], work_folder, '상장수수료 납부영수증')
         else:
             warnings.append("상장수수료 납부영수증이 업로드되지 않았습니다.")
+            print(f"  ⚠️ 업로드 안 됨 - 건너뜀")
 
         # 3. 법인등기부등본
         print("[3/13] 법인등기부등본 복사 중...")
-        _copy_corporate_registry(work_folder)
+        try:
+            _copy_corporate_registry(work_folder)
+        except Exception as e:
+            warnings.append(f"법인등기부등본 복사 실패: {e}")
+            print(f"  ⚠️ 법인등기부등본 파일을 찾을 수 없습니다 - 건너뜀")
 
         # 4. 주주총회의사록 및 조정산식
         print("[4/13] 주주총회의사록 및 조정산식 복사 중...")
-        _copy_shareholder_meeting_minutes(round_id, work_folder, warnings)
+        try:
+            _copy_shareholder_meeting_minutes(round_id, work_folder, warnings)
+        except Exception as e:
+            warnings.append(f"주주총회의사록 복사 실패: {e}")
+            print(f"  ⚠️ 건너뜀")
 
         # 5. 의무보유증명서 및 의무보유청구내역
         print("[5/13] 의무보유증명서 및 의무보유청구내역 복사 중...")
         if config.get('holding_proof_folder'):
-            _copy_uploaded_folder(config['holding_proof_folder'], work_folder, '의무보유증명서 및 의무보유청구내역')
+            try:
+                _copy_uploaded_folder(config['holding_proof_folder'], work_folder, '의무보유증명서 및 의무보유청구내역')
+            except Exception as e:
+                warnings.append(f"의무보유증명서 폴더 복사 실패: {e}")
+                print(f"  ⚠️ 건너뜀")
         else:
             warnings.append("의무보유증명서 및 의무보유청구내역이 업로드되지 않았습니다.")
+            print(f"  ⚠️ 업로드 안 됨 - 건너뜀")
 
         # 6. 발행등록사실확인서
         print("[6/13] 발행등록사실확인서 복사 중...")
-        _copy_issuance_confirmations(round_id, work_folder, warnings)
+        try:
+            _copy_issuance_confirmations(round_id, work_folder, warnings)
+        except Exception as e:
+            warnings.append(f"발행등록사실확인서 복사 실패: {e}")
+            print(f"  ⚠️ 건너뜀")
 
         # 7. 주금납입금 보관증명서
         print("[7/13] 주금납입금 보관증명서 복사 중...")
-        _copy_deposit_certificates(round_id, work_folder, warnings)
+        try:
+            _copy_deposit_certificates(round_id, work_folder, warnings)
+        except Exception as e:
+            warnings.append(f"주금납입금 보관증명서 복사 실패: {e}")
+            print(f"  ⚠️ 건너뜀")
 
         # 8. 금융거래정보제공동의서
         print("[8/13] 금융거래정보제공동의서 생성 중...")
-        _generate_financial_consent(config, work_folder)
+        try:
+            _generate_financial_consent(config, work_folder)
+        except Exception as e:
+            warnings.append(f"금융거래정보제공동의서 생성 실패: {e}")
+            print(f"  ⚠️ 건너뜀")
 
         # 9. 주식매수선택권 행사신청서 (마스킹)
         print("[9/13] 주식매수선택권 행사신청서 (마스킹) 생성 중...")
-        _generate_masked_applications(round_id, work_folder, warnings)
+        try:
+            _generate_masked_applications(round_id, work_folder, warnings)
+        except Exception as e:
+            warnings.append(f"행사신청서 합본 실패: {e}")
+            print(f"  ⚠️ 건너뜀")
 
         # 10. 의무보유확약서
         print("[10/13] 의무보유확약서 복사 중...")
-        _copy_holding_commitments(round_id, work_folder, warnings)
+        try:
+            _copy_holding_commitments(round_id, work_folder, warnings)
+        except Exception as e:
+            warnings.append(f"의무보유확약서 복사 실패: {e}")
+            print(f"  ⚠️ 건너뜀")
 
         # 11. 스톡옵션 행사현황표
         print("[11/13] 스톡옵션 행사현황표 생성 중...")
-        _generate_exercise_summary(round_id, config, work_folder, warnings)
+        try:
+            _generate_exercise_summary(round_id, config, work_folder, warnings)
+        except Exception as e:
+            warnings.append(f"행사현황표 생성 실패: {e}")
+            print(f"  ⚠️ 건너뜀")
 
         # 12. 기타비공개첨부서류
         print("[12/13] 기타비공개첨부서류 생성 중...")
-        _generate_other_documents(round_id, config, work_folder, warnings)
+        try:
+            _generate_other_documents(round_id, config, work_folder, warnings)
+        except Exception as e:
+            warnings.append(f"기타비공개첨부서류 생성 실패: {e}")
+            print(f"  ⚠️ 건너뜀")
 
         # 13. ZIP 파일 생성
         print("[13/13] ZIP 파일 생성 중...")
@@ -130,15 +176,18 @@ def generate_step06_zip(round_obj, config, output_base_dir):
         shutil.rmtree(work_folder)
 
         print(f"\n✅ Step06 생성 완료: {zip_filename}")
+
         if warnings:
-            print(f"\n⚠️ 경고 {len(warnings)}개:")
+            print(f"\n⚠️ 주의사항 ({len(warnings)}개):")
             for w in warnings:
                 print(f"  - {w}")
+            print(f"\n💡 누락된 파일들은 나중에 추가할 수 있습니다.")
+            print(f"   생성 가능한 서류만 먼저 ZIP에 포함되었습니다.")
 
         return {
             'success': True,
             'zip_path': zip_path,
-            'message': f'ZIP 파일 생성 완료: {zip_filename}',
+            'message': f'ZIP 파일 생성 완료 (생성 가능한 서류만 포함)',
             'warnings': warnings
         }
 
@@ -197,6 +246,7 @@ def _copy_shareholder_meeting_minutes(round_id, work_folder, warnings):
 
     if not os.path.exists(step05_output):
         warnings.append("Step05 출력 폴더가 없습니다. 먼저 Step05를 완료해주세요.")
+        print(f"  ⚠️ Step05 미완료 - 건너뜀")
         return
 
     dest_folder = os.path.join(work_folder, '주주총회의사록 및 조정산식')
@@ -247,6 +297,7 @@ def _copy_issuance_confirmations(round_id, work_folder, warnings):
 
     if not rows:
         warnings.append("발행등록사실확인서가 업로드되지 않았습니다.")
+        print(f"  ⚠️ 업로드 안 됨 - 건너뜀")
         return
 
     dest_folder = os.path.join(work_folder, '발행등록사실확인서')
@@ -277,6 +328,7 @@ def _copy_deposit_certificates(round_id, work_folder, warnings):
 
     if not rows:
         warnings.append("주금납입금 보관증명서가 업로드되지 않았습니다. (Step05에서 붙임8 업로드 필요)")
+        print(f"  ⚠️ 업로드 안 됨 - 건너뜀")
         return
 
     dest_folder = os.path.join(work_folder, '주금납입금 보관증명서')
@@ -323,6 +375,7 @@ def _generate_masked_applications(round_id, work_folder, warnings):
 
     if not rows:
         warnings.append("행사신청서가 업로드되지 않았습니다.")
+        print(f"  ⚠️ 업로드 안 됨 - 건너뜀")
         return
 
     # PDF 합본
@@ -354,6 +407,7 @@ def _copy_holding_commitments(round_id, work_folder, warnings):
 
     if not os.path.exists(step033_output):
         warnings.append("Step03-3이 완료되지 않았습니다. 의무보유확약서를 생성할 수 없습니다.")
+        print(f"  ⚠️ Step03-3 미완료 - 건너뜀")
         return
 
     # 의무보유확약서 파일 찾기
@@ -361,6 +415,7 @@ def _copy_holding_commitments(round_id, work_folder, warnings):
 
     if not docx_files:
         warnings.append("의무보유확약서 파일을 찾을 수 없습니다.")
+        print(f"  ⚠️ 파일 없음 - 건너뜀")
         return
 
     dest_folder = os.path.join(work_folder, '의무보유확약서')
@@ -400,6 +455,7 @@ def _generate_exercise_summary(round_id, config, work_folder, warnings):
 
     if not excel_path or not os.path.exists(excel_path):
         warnings.append("스톡옵션 행사현황표 엑셀 파일이 업로드되지 않았습니다.")
+        print(f"  ⚠️ 업로드 안 됨 - 건너뜀")
         return
 
     # TODO: 엑셀 → PDF 변환 (openpyxl + reportlab)
@@ -419,31 +475,118 @@ def _generate_other_documents(round_id, config, work_folder, warnings):
 
     # 1. 재직증명서 폴더
     if config.get('employment_cert_folder'):
-        _copy_uploaded_folder(
-            config['employment_cert_folder'],
-            dest_folder,
-            '재직증명서'
-        )
+        try:
+            _copy_uploaded_folder(
+                config['employment_cert_folder'],
+                dest_folder,
+                '재직증명서'
+            )
+        except Exception as e:
+            warnings.append(f"재직증명서 폴더 복사 실패: {e}")
+            print(f"  ⚠️ 재직증명서 건너뜀")
     else:
         warnings.append("재직증명서 폴더가 업로드되지 않았습니다.")
+        print(f"  ⚠️ 재직증명서 업로드 안 됨 - 건너뜀")
 
-    # 2. 주식매수선택권 부여계약서 폴더 (프로젝트 루트)
+    # 2. 주식매수선택권 부여계약서 (신청자별 매칭 - Step04와 동일 로직)
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     contracts_src = os.path.join(project_root, '부여계약서')
+
     if os.path.exists(contracts_src):
-        contracts_dest = os.path.join(dest_folder, '주식매수선택권부여계약서')
-        shutil.copytree(contracts_src, contracts_dest)
-        print(f"  ✓ 주식매수선택권부여계약서 폴더 복사 완료 (from {contracts_src})")
+        try:
+            # 이번 회차 신청자 조회 (부여일 + 이름)
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('''
+                SELECT id, name, grant_date
+                FROM applicants
+                WHERE round_id = ?
+                ORDER BY sort_order
+            ''', (round_id,))
+            applicants = [{'id': row[0], 'name': row[1], 'grant_date': row[2] or ''} for row in c.fetchall()]
+            conn.close()
+
+            if not applicants:
+                warnings.append("신청자 정보가 없습니다.")
+                print(f"  ⚠️ 신청자 없음 - 부여계약서 건너뜀")
+            else:
+                contracts_dest = os.path.join(dest_folder, '주식매수선택권부여계약서')
+                os.makedirs(contracts_dest, exist_ok=True)
+
+                matched_count = 0
+                unmatched = []
+
+                # 신청자별로 부여계약서 찾기 (Step04 로직과 동일)
+                for applicant in applicants:
+                    name = applicant['name']
+                    grant_date = applicant['grant_date'].strip()
+                    matched = False
+
+                    if not grant_date:
+                        unmatched.append(f"{name} (부여일 없음)")
+                        continue
+
+                    # 부여일 폴더 패턴 시도 (Step04와 동일)
+                    possible_folders = [
+                        grant_date,  # 2020-03-27
+                        grant_date.replace('-', ' '),  # 2020 03 27
+                        grant_date.replace('-', ''),  # 20200327
+                        grant_date[:6] if len(grant_date) >= 6 else grant_date,  # 200327
+                    ]
+
+                    for folder_pattern in possible_folders:
+                        grant_folder = os.path.join(contracts_src, folder_pattern)
+                        if os.path.exists(grant_folder):
+                            # 해당 폴더에서 신청자명이 포함된 PDF 찾기
+                            import glob
+                            contract_files = glob.glob(os.path.join(grant_folder, '*.pdf'))
+                            for contract_path in contract_files:
+                                filename = os.path.basename(contract_path)
+                                if name in filename:
+                                    # 파일명 변경: 신청자명_부여일(숫자만) 원본파일명
+                                    # folder_pattern: "2021 11 01" → "20211101"
+                                    clean_date = folder_pattern.replace(' ', '').replace('-', '')
+                                    dest_filename = f"{name}_{clean_date} {filename}"
+                                    dest_file = os.path.join(contracts_dest, dest_filename)
+                                    shutil.copy2(contract_path, dest_file)
+                                    matched_count += 1
+                                    matched = True
+                                    print(f"  ✓ {name}: {dest_filename}")
+                                    break
+                            if matched:
+                                break
+
+                    if not matched:
+                        unmatched.append(f"{name} (부여일: {grant_date})")
+
+                if matched_count > 0:
+                    print(f"  ✓ 부여계약서 {matched_count}개 복사 완료")
+                else:
+                    warnings.append("매칭된 부여계약서가 없습니다.")
+
+                if unmatched:
+                    warnings.append(f"부여계약서를 찾을 수 없는 신청자 {len(unmatched)}명: {', '.join(unmatched)}")
+                    print(f"  ⚠️ 매칭 실패: {', '.join(unmatched)}")
+
+        except Exception as e:
+            warnings.append(f"부여계약서 복사 실패: {e}")
+            print(f"  ⚠️ 부여계약서 건너뜀: {e}")
     else:
         warnings.append(f"주식매수선택권부여계약서 폴더를 찾을 수 없습니다: {contracts_src}")
+        print(f"  ⚠️ 부여계약서 폴더 없음 - 건너뜀")
 
     # 3. 법인인감증명서
     cert_src = os.path.join(COMMON_TEMPLATES_DIR, '법인인감증명서.pdf')
     cert_dest = os.path.join(dest_folder, '법인인감증명서.pdf')
     if os.path.exists(cert_src):
-        shutil.copy(cert_src, cert_dest)
-        print(f"  ✓ 법인인감증명서 복사 완료")
+        try:
+            shutil.copy(cert_src, cert_dest)
+            print(f"  ✓ 법인인감증명서 복사 완료")
+        except Exception as e:
+            warnings.append(f"법인인감증명서 복사 실패: {e}")
+            print(f"  ⚠️ 법인인감증명서 건너뜀")
     else:
         warnings.append("법인인감증명서를 찾을 수 없습니다.")
+        print(f"  ⚠️ 법인인감증명서 없음 - 건너뜀")
 
     print(f"  ✓ 기타비공개첨부서류 폴더 생성 완료")

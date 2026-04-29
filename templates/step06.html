@@ -181,9 +181,12 @@
   <div class="section-card-header">
     <h2 class="section-card-title">④ ZIP 파일 생성</h2>
   </div>
-  <button onclick="generateStep06()" class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;">
+  <button id="generate-btn" onclick="generateStep06()" class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;">
     KIND 상장신청 ZIP 파일 생성
   </button>
+
+  <!-- 생성 결과 -->
+  <div id="generate-result" style="margin-top:20px;display:none;"></div>
 </div>
 
 <!-- ⑤ 생성 이력 -->
@@ -195,7 +198,7 @@
     {% if outputs %}
       {% for output in outputs %}
       <div class="output-row">
-        <a href="/download/{{ output.output_path }}" download class="output-link">
+        <a href="/round/{{ round.id }}/step06/download/{{ output.output_filename }}" download class="output-link">
           {{ output.output_filename }}
         </a>
         <span class="output-date">{{ output.created_at }}</span>
@@ -328,18 +331,67 @@ async function generateStep06() {
         return;
     }
 
-    showToast('생성 중...', 'info');
+    const btn = document.getElementById('generate-btn');
+    const resultDiv = document.getElementById('generate-result');
 
-    const result = await apiCall(`/api/round/${roundId}/step06/generate`, 'POST');
-    if (result.success) {
-        showToast('생성 완료', 'success');
-        if (result.warnings && result.warnings.length > 0) {
-            const warnList = result.warnings.map(w => '  - ' + w).join('\n');
-            alert('경고:\n' + warnList);
+    // 생성 시작 시에만 결과 초기화
+    btn.disabled = true;
+    btn.textContent = '생성 중...';
+    resultDiv.style.display = 'none';
+    resultDiv.innerHTML = '';
+
+    try {
+        const result = await apiCall(`/api/round/${roundId}/step06/generate`, 'POST');
+
+        if (result.success) {
+            // 성공 결과 표시
+            let html = `
+                <div style="padding:16px;background:#f0f9ff;border:2px solid #3b82f6;border-radius:8px;">
+                    <h3 style="margin:0 0 12px 0;color:#1e40af;font-size:15px;display:flex;align-items:center;gap:8px;">
+                        <span>✅</span> 생성 완료
+                    </h3>
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:white;border-radius:6px;margin-bottom:12px;">
+                        <span style="font-weight:600;font-size:14px;">${result.filename}</span>
+                        <a href="/round/${roundId}/step06/download/${encodeURIComponent(result.filename)}"
+                           class="btn btn-success btn-sm" download>⬇ 다운로드</a>
+                    </div>`;
+
+            // 경고사항 표시
+            if (result.warnings && result.warnings.length > 0) {
+                html += `
+                    <div style="background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;padding:12px;margin-top:12px;">
+                        <h4 style="margin:0 0 8px 0;color:#b45309;font-size:13px;font-weight:600;">⚠️ 주의사항 (${result.warnings.length}개)</h4>
+                        <ul style="margin:0;padding-left:20px;font-size:12px;color:#78350f;">`;
+
+                result.warnings.forEach(w => {
+                    html += `<li style="margin:4px 0;">${w}</li>`;
+                });
+
+                html += `
+                        </ul>
+                        <p style="margin:8px 0 0 0;font-size:12px;color:#92400e;">
+                            💡 누락된 파일들은 나중에 추가할 수 있습니다.
+                        </p>
+                    </div>`;
+            }
+
+            html += `</div>`;
+            resultDiv.innerHTML = html;
+            resultDiv.style.display = 'block';
+
+            showToast('생성 완료', 'success');
+
+            // 자동 새로고침 제거 - 다운로드 버튼 계속 유지
+            // 생성 이력은 페이지 하단에 자동 업데이트되지 않지만,
+            // 다음 생성 시 또는 수동 새로고침 시 업데이트됨
+        } else {
+            showToast(result.error || '생성 실패', 'error');
         }
-        location.reload();
-    } else {
-        showToast(result.error || '생성 실패', 'error');
+    } catch (e) {
+        showToast('오류: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'KIND 상장신청 ZIP 파일 생성';
     }
 }
 </script>

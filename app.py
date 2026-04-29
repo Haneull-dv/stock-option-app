@@ -2099,7 +2099,8 @@ def step06_generate(round_id):
             return jsonify(
                 success=True,
                 message=result['message'],
-                warnings=result.get('warnings', [])
+                warnings=result.get('warnings', []),
+                filename=zip_filename
             )
         else:
             return jsonify(success=False, error=result['message'])
@@ -2108,6 +2109,31 @@ def step06_generate(round_id):
         import traceback
         traceback.print_exc()
         return jsonify(success=False, error=str(e))
+
+
+@app.route('/round/<int:round_id>/step06/download/<path:filename>')
+def download_step06(round_id, filename):
+    """Step06 생성된 ZIP 파일 다운로드."""
+    output_dir = os.path.join(OUTPUT_FOLDER, str(round_id), 'step06')
+    safe = filename.replace('\\', '/')
+    full_path = os.path.join(output_dir, safe)
+    full_path = os.path.normpath(full_path)
+
+    # 보안: output_dir 밖으로 나가지 못하게
+    if not full_path.startswith(os.path.normpath(output_dir)):
+        abort(404)
+    if not os.path.isfile(full_path):
+        abort(404)
+
+    display = os.path.basename(safe)
+    mime = 'application/zip' if display.endswith('.zip') else 'application/octet-stream'
+
+    return send_file(
+        full_path,
+        as_attachment=True,
+        download_name=display,
+        mimetype=mime
+    )
 
 
 @app.errorhandler(404)
