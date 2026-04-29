@@ -6,6 +6,7 @@ python-docx로 템플릿 표 행 교체 + 확약인 단락 교체.
 from copy import deepcopy
 from docx import Document
 from docx.oxml.ns import qn
+from docx.shared import Pt
 from lxml import etree
 import os
 
@@ -26,6 +27,15 @@ def _set_cell_text(cell, text: str):
             p.runs[0].text = text
         else:
             p.add_run(text)
+
+
+def _adjust_cell_font_size(cell, size_reduction_pt: int):
+    """셀 내 모든 run의 글자 크기를 지정된 포인트만큼 줄임."""
+    for para in cell.paragraphs:
+        for run in para.runs:
+            if run.font.size:
+                current_size = run.font.size.pt
+                run.font.size = Pt(current_size - size_reduction_pt)
 
 
 def _clean_ids(tr_element):
@@ -197,6 +207,7 @@ def generate_hwakjakseo(template_path: str, output_path: str,
         if is_first:
             _set_vmerge(tcs[4], 'restart')
             _set_cell_text(cells[4], '주1)')
+            _adjust_cell_font_size(cells[4], 2)  # 의무보유사유 "주1)" 글자 크기 2pt 줄이기
             _set_vmerge(tcs[5], 'restart')
             _set_cell_text(cells[5], holding_start)
             _set_vmerge(tcs[6], 'restart')
@@ -219,17 +230,20 @@ def generate_hwakjakseo(template_path: str, output_path: str,
     _set_cell_text(sc[0], '합계')
     _set_cell_text(sc[2], '보통주')         # 종류 열
     _set_cell_text(sc[3], f'{total_qty:,}') # 주식수 열
+    _adjust_cell_font_size(sc[3], 2)        # 합계 주식수 글자 크기 2pt 줄이기
     for ci in range(4, len(sc)):
         _set_cell_text(sc[ci], '')
-
-    # 빈 footer 행 복원
-    if template_foot is not None:
-        table._tbl.append(_clone_row(template_foot))
 
     # ── 주1) 단락 업데이트 (표 바로 아래) ────────────────────────────────────
     for para in doc.paragraphs:
         if para.text.strip().startswith('주1)'):
             _replace_para_text(para, f'주1) {REASON}')
+            break
+
+    # ── 주2) 단락 삭제 ────────────────────────────────────────────────────────
+    for para in doc.paragraphs:
+        if para.text.strip().startswith('주2)'):
+            para._element.getparent().remove(para._element)
             break
 
     # ── 확약인 단락 교체 ──────────────────────────────────────────────────────
@@ -242,16 +256,20 @@ def generate_hwakjakseo(template_path: str, output_path: str,
         if i < len(name_para_indices):
             _replace_para_text(doc.paragraphs[name_para_indices[i]], new_text)
 
-    # 남는 확약인 블록 제거
-    if len(subjects) < len(name_para_indices):
-        for idx in reversed(name_para_indices[len(subjects):]):
-            for offset in range(4, -1, -1):
-                target = idx - offset
-                if 0 <= target < len(doc.paragraphs):
-                    p = doc.paragraphs[target]
-                    if p.text.strip() in ('확약인', '주식회사 에스투더블유', '') or \
-                       '주주명 (본 인)' in p.text:
-                        p._element.getparent().remove(p._element)
+    # 마지막 서명 페이지 이후의 모든 불필요한 단락 제거
+    if name_para_indices and subjects:
+        # 사용한 마지막 "주주명 (본 인)" 단락 인덱스
+        last_used_idx = name_para_indices[len(subjects) - 1]
+
+        # 마지막 사용 단락 이후의 모든 단락 삭제 (빈 페이지 제거)
+        paras_to_remove = []
+        for i, para in enumerate(doc.paragraphs):
+            if i > last_used_idx:
+                paras_to_remove.append(para)
+
+        # 역순으로 삭제 (인덱스 변경 방지)
+        for para in paras_to_remove:
+            para._element.getparent().remove(para._element)
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     doc.save(output_path)

@@ -183,8 +183,8 @@ def _copy_uploaded_folder(folder_path, work_folder, display_name):
 
 
 def _copy_corporate_registry(work_folder):
-    """법인등기부등본 복사 (260408 최신)."""
-    src = os.path.join(COMMON_TEMPLATES_DIR, '(붙임9) 법인등기부등본_에스투더블유 260408.pdf')
+    """법인등기부등본 복사 (260428 최신)."""
+    src = os.path.join(COMMON_TEMPLATES_DIR, '(붙임9) 법인등기부등본_에스투더블유 260428.pdf')
     dest = os.path.join(work_folder, '법인등기부등본.pdf')
     shutil.copy(src, dest)
     print(f"  ✓ 법인등기부등본 복사 완료")

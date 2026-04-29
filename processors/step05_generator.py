@@ -585,7 +585,7 @@ def _merge_account_copies(price_folder, applicants, price):
 
 def _copy_attachment9(price_folder):
     """붙임9: 법인등기부등본 복사."""
-    src = os.path.join(COMMON_TEMPLATES_DIR, '(붙임9) 법인등기부등본_에스투더블유 260408.pdf')
+    src = os.path.join(COMMON_TEMPLATES_DIR, '(붙임9) 법인등기부등본_에스투더블유 260428.pdf')
     dest = os.path.join(price_folder, '(붙임9) 법인등기부등본.pdf')
     shutil.copy2(src, dest)
     return dest

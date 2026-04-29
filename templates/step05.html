@@ -287,8 +287,7 @@
   </div>
   <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
     발행가액별로 필요한 서류를 자동 생성하고 ZIP 파일로 다운로드합니다.<br>
-    <strong>포함 서류:</strong> (전자등록) HWPX, 발행등록확인신청서 PDF, 법인인감증명서 PDF,
-    붙임1~9 (자동생성 가능 항목)
+    <strong style="color:#d68910;">⚠️ 인감 날인 필요:</strong> 발행등록확인신청서, (전자등록)_발행가액, (붙임2) 일괄발행등록_의뢰확약서, (붙임5) 주식매수선택권_부여및행사내역서
   </p>
   <button class="btn btn-primary btn-lg" id="generate-btn" onclick="generateDocs()">
     &#9889; 발행가액별 ZIP 생성
@@ -372,6 +371,33 @@ async function generateDocs() {
       }
     }
     html += '</div>';
+
+    // 예탁원 인감날인 안내
+    html += `
+      <div style="margin-top:20px;padding:16px;background:#fff9e6;border:2px solid #f39c12;border-radius:8px;">
+        <h3 style="font-size:14px;font-weight:700;color:#d68910;margin:0 0 12px 0;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:18px;">⚠️</span> 예탁원 인감날인 필요 서류
+        </h3>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:#7d6608;">
+          <div style="display:flex;align-items:start;gap:8px;">
+            <span style="font-weight:600;min-width:180px;">• 발행등록확인신청서</span>
+            <span style="color:#856404;">예탁원 인감날인 필요</span>
+          </div>
+          <div style="display:flex;align-items:start;gap:8px;">
+            <span style="font-weight:600;min-width:180px;">• (전자등록)_발행가액</span>
+            <span style="color:#856404;">예탁원 인감날인 필요</span>
+          </div>
+          <div style="display:flex;align-items:start;gap:8px;">
+            <span style="font-weight:600;min-width:180px;">• (붙임2) 일괄발행등록_의뢰확약서</span>
+            <span style="color:#856404;">예탁원 인감날인 필요 + 뒤에 대리인 신분증 사본 첨부</span>
+          </div>
+          <div style="display:flex;align-items:start;gap:8px;">
+            <span style="font-weight:600;min-width:180px;">• (붙임5) 주식매수선택권_부여및행사내역서</span>
+            <span style="color:#856404;">예탁원 인감날인 필요</span>
+          </div>
+        </div>
+      </div>`;
+
     resultEl.innerHTML = html;
     showToast('생성 완료', 'success');
   } catch (e) {

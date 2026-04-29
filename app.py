@@ -1301,9 +1301,14 @@ def step033_generate(round_id):
 
     data = request.get_json(silent=True) or {}
     doc_types = data.get('doc_types', ['hwakjakseo', 'gongmun'])
+    selected_ids = data.get('selected_ids', [])
 
     config = db.get_holding_config(round_id)
     subjects = db.get_holding_subjects(round_id)
+
+    # selected_ids로 필터링
+    if selected_ids:
+        subjects = [s for s in subjects if s['id'] in selected_ids]
 
     if not subjects:
         return jsonify(success=False, message='의무보유 대상자가 없습니다.')

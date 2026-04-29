@@ -38,6 +38,8 @@ function openModal(title, contentId) {
   const form = bodyEl.querySelector('form');
   if (form && form.id === 'applicant-form') {
     form.onsubmit = submitAddApplicant;
+  } else if (form && form.id === 'subject-form') {
+    form.onsubmit = submitSubject;
   }
 }
 

@@ -157,16 +157,16 @@
 
 <!-- 추가/편집 모달 -->
 <div id="subject-form-content" style="display:none;">
-  <form id="subject-form" onsubmit="submitSubject(event)">
-    <input type="hidden" id="subject-id" value="">
+  <form id="subject-form">
+    <input type="hidden" name="subject-id" value="">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div class="form-group">
         <label class="form-label required">이름</label>
-        <input type="text" id="sf-name" class="form-control" required placeholder="홍길동">
+        <input type="text" name="sf-name" class="form-control" required placeholder="홍길동">
       </div>
       <div class="form-group">
         <label class="form-label">관계</label>
-        <select id="sf-relationship" class="form-control">
+        <select name="sf-relationship" class="form-control">
           <option value="미등기임원">미등기임원</option>
           <option value="등기임원">등기임원</option>
           <option value="직원">직원</option>
@@ -175,22 +175,22 @@
       </div>
       <div class="form-group">
         <label class="form-label required">수량 (주)</label>
-        <input type="number" id="sf-quantity" class="form-control" required min="0" placeholder="10000">
+        <input type="number" name="sf-quantity" class="form-control" required min="0" placeholder="10000">
       </div>
       <div class="form-group">
         <label class="form-label">처리지점</label>
-        <select id="sf-branch" class="form-control">
+        <select name="sf-branch" class="form-control">
           <option value="도곡">도곡WM센터</option>
           <option value="여의도">여의도금융1센터</option>
         </select>
       </div>
       <div class="form-group">
         <label class="form-label">계좌번호</label>
-        <input type="text" id="sf-account" class="form-control" placeholder="000-00-000000">
+        <input type="text" name="sf-account" class="form-control" placeholder="000-00-000000">
       </div>
       <div class="form-group">
         <label class="form-label">비고</label>
-        <input type="text" id="sf-note" class="form-control" placeholder="">
+        <input type="text" name="sf-note" class="form-control" placeholder="">
       </div>
     </div>
     <div class="form-actions" style="margin-top:8px;">
@@ -325,14 +325,20 @@ function updateCounts(subjects) {
 
 // ── 추가 모달 ──────────────────────────────────────────────────────────────────
 function openAddModal() {
-  document.getElementById('subject-id').value        = '';
-  document.getElementById('sf-name').value           = '';
-  document.getElementById('sf-relationship').value   = '미등기임원';
-  document.getElementById('sf-quantity').value       = '';
-  document.getElementById('sf-branch').value         = '도곡';
-  document.getElementById('sf-account').value        = '';
-  document.getElementById('sf-note').value           = '';
   openModal('대상자 추가', 'subject-form-content');
+  setTimeout(() => {
+    const modalForm = document.querySelector('#modal-body form');
+    if (modalForm) {
+      modalForm.querySelector('[name="subject-id"]').value = '';
+      modalForm.querySelector('[name="sf-name"]').value = '';
+      modalForm.querySelector('[name="sf-relationship"]').value = '미등기임원';
+      modalForm.querySelector('[name="sf-quantity"]').value = '';
+      modalForm.querySelector('[name="sf-branch"]').value = '도곡';
+      modalForm.querySelector('[name="sf-account"]').value = '';
+      modalForm.querySelector('[name="sf-note"]').value = '';
+      modalForm.onsubmit = submitSubject;
+    }
+  }, 0);
 }
 
 // ── 편집 모달 ──────────────────────────────────────────────────────────────────
@@ -341,27 +347,35 @@ function openEditModal(id) {
   if (!row) return;
   const cells = row.querySelectorAll('td');
   // cells: [0]=chk [1]=이름 [2]=관계 [3]=수량 [4]=지점 [5]=계좌 [6]=비고 [7]=편집버튼
-  document.getElementById('subject-id').value      = id;
-  document.getElementById('sf-name').value         = cells[1].textContent.trim();
-  document.getElementById('sf-relationship').value = cells[2].textContent.trim();
-  document.getElementById('sf-quantity').value     = cells[3].textContent.trim().replace(/,/g,'');
-  document.getElementById('sf-branch').value       = cells[4].textContent.trim();
-  document.getElementById('sf-account').value      = cells[5].textContent.trim() === '-' ? '' : cells[5].textContent.trim();
-  document.getElementById('sf-note').value         = cells[6].textContent.trim();
+
   openModal('대상자 편집', 'subject-form-content');
+  setTimeout(() => {
+    const modalForm = document.querySelector('#modal-body form');
+    if (modalForm) {
+      modalForm.querySelector('[name="subject-id"]').value = id;
+      modalForm.querySelector('[name="sf-name"]').value = cells[1].textContent.trim();
+      modalForm.querySelector('[name="sf-relationship"]').value = cells[2].textContent.trim();
+      modalForm.querySelector('[name="sf-quantity"]').value = cells[3].textContent.trim().replace(/,/g,'');
+      modalForm.querySelector('[name="sf-branch"]').value = cells[4].textContent.trim();
+      modalForm.querySelector('[name="sf-account"]').value = cells[5].textContent.trim() === '-' ? '' : cells[5].textContent.trim();
+      modalForm.querySelector('[name="sf-note"]').value = cells[6].textContent.trim();
+      modalForm.onsubmit = submitSubject;
+    }
+  }, 0);
 }
 
 // ── 저장 ───────────────────────────────────────────────────────────────────────
 async function submitSubject(event) {
   event.preventDefault();
-  const id = document.getElementById('subject-id').value;
+  const form = event.target;
+  const id = form.querySelector('[name="subject-id"]').value;
   const payload = {
-    name:           document.getElementById('sf-name').value.trim(),
-    relationship:   document.getElementById('sf-relationship').value,
-    quantity:       parseInt(document.getElementById('sf-quantity').value) || 0,
-    branch:         document.getElementById('sf-branch').value,
-    account_number: document.getElementById('sf-account').value.trim(),
-    note:           document.getElementById('sf-note').value.trim(),
+    name:           form.querySelector('[name="sf-name"]').value.trim(),
+    relationship:   form.querySelector('[name="sf-relationship"]').value,
+    quantity:       parseInt(form.querySelector('[name="sf-quantity"]').value) || 0,
+    branch:         form.querySelector('[name="sf-branch"]').value,
+    account_number: form.querySelector('[name="sf-account"]').value.trim(),
+    note:           form.querySelector('[name="sf-note"]').value.trim(),
   };
   try {
     const url = id
@@ -385,10 +399,20 @@ async function generateDocs() {
   if (document.getElementById('chk-gongmun').checked)    docTypes.push('gongmun');
   if (!docTypes.length) { showToast('생성할 서류를 선택하세요', 'warning'); return; }
 
+  // 체크박스로 선택한 대상자 ID 수집
+  const checkedIds = [...document.querySelectorAll('.row-chk:checked')].map(c => parseInt(c.value));
+  if (checkedIds.length === 0) {
+    showToast('서류에 포함할 대상자를 체크박스로 선택하세요', 'warning');
+    return;
+  }
+
   const btn = document.getElementById('generate-btn');
   btn.disabled = true; btn.textContent = '생성 중...';
   try {
-    const res = await apiCall(`/round/${ROUND_ID}/step033/generate`, 'POST', { doc_types: docTypes });
+    const res = await apiCall(`/round/${ROUND_ID}/step033/generate`, 'POST', {
+      doc_types: docTypes,
+      selected_ids: checkedIds
+    });
     if (!res.success) { showToast(res.message || '생성 실패', 'error'); return; }
 
     const section = document.getElementById('result-section');
